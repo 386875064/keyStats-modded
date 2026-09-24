@@ -1,0 +1,74 @@
+<Window x:Class="KeyStats.Views.GameOverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:p="clr-namespace:KeyStats.Properties"
+        Title="{x:Static p:Strings.GameOverlay_WindowTitle}"
+        Width="196"
+        Height="34"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Topmost="True"
+        ResizeMode="NoResize"
+        WindowStartupLocation="Manual"
+        TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType">
+    <Border x:Name="RootBorder"
+            Background="{DynamicResource FloatingStatsSurfaceBrush}"
+            BorderBrush="{DynamicResource TrayPopupBorderBrush}"
+            BorderThickness="0.5"
+            CornerRadius="8"
+            Cursor="SizeAll"
+            SnapsToDevicePixels="True"
+            MouseLeftButtonDown="RootBorder_MouseLeftButtonDown">
+        <Grid Margin="8,2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="1"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="1"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="1"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock x:Name="DurationTextBlock" Grid.Column="0"
+                       Text="--:--" FontSize="12" FontWeight="Medium"
+                       Foreground="{DynamicResource TextPrimaryBrush}"
+                       TextAlignment="Center" VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis"/>
+
+            <Border Grid.Column="1" Width="0.5" Height="16"
+                    Background="{DynamicResource DividerBrush}"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+            <TextBlock x:Name="ApmTextBlock" Grid.Column="2"
+                       Text="0" FontSize="12" FontWeight="SemiBold"
+                       Foreground="{DynamicResource AccentBrush}"
+                       TextAlignment="Center" VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis"/>
+
+            <Border Grid.Column="3" Width="0.5" Height="16"
+                    Background="{DynamicResource DividerBrush}"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+            <TextBlock x:Name="KeysTextBlock" Grid.Column="4"
+                       Text="0" FontSize="12" FontWeight="Medium"
+                       Foreground="{DynamicResource TextPrimaryBrush}"
+                       TextAlignment="Center" VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis"/>
+
+            <Border Grid.Column="5" Width="0.5" Height="16"
+                    Background="{DynamicResource DividerBrush}"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+            <TextBlock x:Name="ClicksTextBlock" Grid.Column="6"
+                       Text="0" FontSize="12" FontWeight="Medium"
+                       Foreground="{DynamicResource TextPrimaryBrush}"
+                       TextAlignment="Center" VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis"/>
+        </Grid>
+    </Border>
+</Window>

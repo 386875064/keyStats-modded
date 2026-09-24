@@ -1,0 +1,184 @@
+<Window x:Class="KeyStats.Views.GameSessionDetailWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:KeyStats.Views.Controls"
+        xmlns:p="clr-namespace:KeyStats.Properties"
+        Title="{x:Static p:Strings.GameStats_DetailTitle}"
+        Width="800"
+        Height="700"
+        MinWidth="720"
+        MinHeight="600"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource WindowSurfaceBrush}"
+        ShowInTaskbar="False">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,14">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="{Binding GameName}" FontSize="20" FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                <TextBlock Text="{Binding TimeText}" FontSize="12" Margin="12,0,0,0"
+                           VerticalAlignment="Bottom" Foreground="{DynamicResource TextSecondaryBrush}"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                <TextBlock Text="{x:Static p:Strings.GameStats_Duration}" FontSize="12"
+                           Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,0,4,0"/>
+                <TextBlock Text="{Binding DurationText}" FontSize="12" FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,16,0"/>
+                <TextBlock Text="{Binding CaptureChannelText}" FontSize="11"
+                           Foreground="{DynamicResource TextTertiaryBrush}"/>
+            </StackPanel>
+        </StackPanel>
+
+        <!-- Metrics -->
+        <Border Grid.Row="1" Style="{DynamicResource CardBorder}" Padding="14" Margin="0,0,0,14">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="{x:Static p:Strings.GameStats_Keys}" Style="{DynamicResource StatLabel}"/>
+                        <TextBlock Text="{Binding KeysText}" Style="{DynamicResource StatValue}"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="{x:Static p:Strings.Click_Left}" Style="{DynamicResource StatLabel}"/>
+                        <TextBlock Text="{Binding LeftText}" Style="{DynamicResource StatValue}"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="{x:Static p:Strings.Click_Right}" Style="{DynamicResource StatLabel}"/>
+                        <TextBlock Text="{Binding RightText}" Style="{DynamicResource StatValue}"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="3">
+                        <TextBlock Text="{x:Static p:Strings.Click_Middle}" Style="{DynamicResource StatLabel}"/>
+                        <TextBlock Text="{Binding MiddleText}" Style="{DynamicResource StatValue}"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="4">
+                        <TextBlock Text="{x:Static p:Strings.GameStats_MouseDistance}" Style="{DynamicResource StatLabel}"/>
+                        <TextBlock Text="{Binding MouseDistanceText}" Style="{DynamicResource StatValue}"/>
+                    </StackPanel>
+                </Grid>
+
+                <Grid Margin="0,14,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="{x:Static p:Strings.GameStats_AverageApm}" Style="{DynamicResource StatLabel}"/>
+                        <TextBlock Text="{Binding AverageApmText}" FontSize="15" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="{x:Static p:Strings.GameStats_PeakApm}" Style="{DynamicResource StatLabel}"/>
+                        <TextBlock Text="{Binding PeakApmText}" FontSize="15" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="{x:Static p:Strings.GameStats_PeakKpm}" Style="{DynamicResource StatLabel}"/>
+                        <TextBlock Text="{Binding PeakKpmText}" FontSize="15" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="3">
+                        <TextBlock Text="{x:Static p:Strings.GameStats_PeakCpm}" Style="{DynamicResource StatLabel}"/>
+                        <TextBlock Text="{Binding PeakCpmText}" FontSize="15" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="4">
+                        <TextBlock Text="{x:Static p:Strings.GameStats_PeakKps}" Style="{DynamicResource StatLabel}"/>
+                        <TextBlock Text="{Binding PeakKpsText}" FontSize="15" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- Timeline -->
+        <StackPanel Grid.Row="2" Margin="0,0,0,6">
+            <TextBlock Text="{x:Static p:Strings.GameStats_TimelineTitle}"
+                       Style="{DynamicResource CardTitleText}"/>
+        </StackPanel>
+
+        <Border Grid.Row="3" Style="{DynamicResource CardBorder}" Padding="10" Margin="0,0,0,14" Height="176">
+            <Grid>
+                <TextBlock Text="{x:Static p:Strings.GameStats_NoTimeline}" FontSize="12"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap"
+                           Visibility="{Binding HasNoTimeline, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
+                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
+                              Visibility="{Binding HasTimeline, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <ItemsControl ItemsSource="{Binding TimelineBars}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Width="16" Height="150" Margin="1,0">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="*"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <Border Grid.Row="0" Width="14" Height="{Binding BarHeight}"
+                                            VerticalAlignment="Bottom"
+                                            CornerRadius="2"
+                                            ToolTip="{Binding TooltipText}">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding HasValue}" Value="False">
+                                                        <Setter Property="Opacity" Value="0.22"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                    </Border>
+
+                                    <TextBlock Grid.Row="1" Text="{Binding MinuteText}" FontSize="9"
+                                               HorizontalAlignment="Center" Margin="0,3,0,0"
+                                               Foreground="{DynamicResource TextTertiaryBrush}"
+                                               Visibility="{Binding ShowMinuteLabel, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+
+        <!-- Heatmap -->
+        <Grid Grid.Row="4">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Text="{x:Static p:Strings.GameStats_HeatmapTitle}"
+                       Style="{DynamicResource CardTitleText}" Margin="0,0,0,6"/>
+
+            <Border Grid.Row="1" Style="{DynamicResource CardBorder}" Padding="10">
+                <controls:KeyboardHeatmapControl x:Name="KeyboardHeatmapView"/>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>
