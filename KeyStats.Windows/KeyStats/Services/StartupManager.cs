@@ -10,19 +10,22 @@ public class StartupManager
     private static StartupManager? _instance;
     public static StartupManager Instance => _instance ??= new StartupManager();
 
-    private const string RegistryKeyPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
-    private const string AppName = "KeyStats";
+    private const string TaskName = "KeyStats";
+    private const string LegacyRegistryKeyPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
+    private const string LegacyAppName = "KeyStats";
 
     private StartupManager() { }
 
+    /// <summary>
+    /// 计划任务是否存在（开机自启 = 计划任务 ONLOGON + 最高权限）。
+    /// </summary>
     public bool IsEnabled
     {
         get
         {
             try
             {
-                using var key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath, false);
-                return key?.GetValue(AppName) != null;
+                return RunScheduler($"/Query /TN \"{TaskName}\"");
             }
             catch
             {
@@ -35,29 +38,17 @@ public class StartupManager
     {
         try
         {
-            var shouldEnable = StatsManager.Instance.Settings.LaunchAtStartup;
-            if (!shouldEnable)
+            // HKCU Run 项 + RUNASADMIN 兼容层在登录场景会被 Windows 静默丢弃（Explorer 非提权令牌
+            // 拉不起需要提升的 Run 项），改用计划任务后旧 Run 项只会造成双启动，清掉。
+            DeleteLegacyRunEntry();
+
+            if (!StatsManager.Instance.Settings.LaunchAtStartup)
             {
                 return;
             }
 
-            using var key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath, true);
-            if (key == null)
-            {
-                return;
-            }
-
-            var currentExePath = GetCurrentExecutablePath();
-            if (string.IsNullOrWhiteSpace(currentExePath))
-            {
-                return;
-            }
-
-            var configuredExePath = GetConfiguredExecutablePath(key);
-            if (!PathsEqual(configuredExePath, currentExePath))
-            {
-                key.SetValue(AppName, $"\"{currentExePath}\"");
-            }
+            // 幂等重建（/F 覆盖），保证任务指向的 exe 路径永远与当前一致
+            SetEnabled(true);
         }
         catch (Exception ex)
         {
@@ -67,34 +58,70 @@ public class StartupManager
 
     public void SetEnabled(bool enabled)
     {
+        if (enabled)
+        {
+            var exePath = GetCurrentExecutablePath();
+            if (string.IsNullOrWhiteSpace(exePath))
+            {
+                throw new InvalidOperationException("无法确定当前程序路径，无法设置开机启动。");
+            }
+
+            if (!RunScheduler($"/Create /F /TN \"{TaskName}\" /TR \"\\\"{exePath}\\\"\" /SC ONLOGON /RL HIGHEST"))
+            {
+                throw new InvalidOperationException("创建开机启动计划任务失败（需要管理员权限）。");
+            }
+        }
+        else
+        {
+            RunScheduler($"/Delete /F /TN \"{TaskName}\"");
+            DeleteLegacyRunEntry();
+        }
+
+        StatsManager.Instance.Settings.LaunchAtStartup = enabled;
+        StatsManager.Instance.SaveSettings();
+    }
+
+    private static bool RunScheduler(string arguments)
+    {
         try
         {
-            using var key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath, true);
-            if (key == null)
+            using var process = Process.Start(new ProcessStartInfo
             {
-                return;
+                FileName = "schtasks.exe",
+                Arguments = arguments,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WindowStyle = ProcessWindowStyle.Hidden
+            });
+            if (process == null)
+            {
+                return false;
             }
 
-            if (enabled)
+            if (!process.WaitForExit(10_000))
             {
-                var exePath = GetCurrentExecutablePath();
-                if (!string.IsNullOrWhiteSpace(exePath))
-                {
-                    key.SetValue(AppName, $"\"{exePath}\"");
-                }
-            }
-            else
-            {
-                key.DeleteValue(AppName, false);
+                return false;
             }
 
-            StatsManager.Instance.Settings.LaunchAtStartup = enabled;
-            StatsManager.Instance.SaveSettings();
+            return process.ExitCode == 0;
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Error setting startup: {ex.Message}");
-            throw;
+            Debug.WriteLine($"schtasks failed: {arguments} -> {ex.Message}");
+            return false;
+        }
+    }
+
+    private static void DeleteLegacyRunEntry()
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(LegacyRegistryKeyPath, true);
+            key?.DeleteValue(LegacyAppName, false);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to remove legacy run entry: {ex.Message}");
         }
     }
 
@@ -125,50 +152,5 @@ public class StartupManager
         }
 
         return null;
-    }
-
-    private static string? GetConfiguredExecutablePath(RegistryKey key)
-    {
-        if (key.GetValue(AppName) is not string rawValue || string.IsNullOrWhiteSpace(rawValue))
-        {
-            return null;
-        }
-
-        var trimmed = rawValue.Trim();
-        if (trimmed.StartsWith("\"", StringComparison.Ordinal))
-        {
-            var closingQuoteIndex = trimmed.IndexOf('"', 1);
-            if (closingQuoteIndex > 1)
-            {
-                trimmed = trimmed.Substring(1, closingQuoteIndex - 1);
-            }
-        }
-        else
-        {
-            var firstSpaceIndex = trimmed.IndexOf(' ');
-            if (firstSpaceIndex > 0)
-            {
-                trimmed = trimmed.Substring(0, firstSpaceIndex);
-            }
-        }
-
-        try
-        {
-            return Path.GetFullPath(trimmed);
-        }
-        catch
-        {
-            return trimmed;
-        }
-    }
-
-    private static bool PathsEqual(string? left, string? right)
-    {
-        if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
-        {
-            return false;
-        }
-
-        return string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
     }
 }

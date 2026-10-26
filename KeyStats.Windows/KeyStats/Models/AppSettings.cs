@@ -26,22 +26,11 @@ public class AppSettings
     [JsonPropertyName("launchAtStartup")]
     public bool LaunchAtStartup { get; set; }
 
-    /// <summary>
-    /// Anonymous usage analytics. Off by default in this build: the upstream key
-    /// belongs to the original author's PostHog project, so shipping it would send
-    /// other people's usage data to a third party. Fill in your own key to enable.
-    /// </summary>
     [JsonPropertyName("analyticsEnabled")]
     public bool AnalyticsEnabled { get; set; }
 
     [JsonPropertyName("analyticsApiKey")]
     public string? AnalyticsApiKey { get; set; }
-
-    /// <summary>
-    /// Upstream author's hard-coded PostHog key. Kept only so the app can recognise
-    /// and purge it from existing settings files (see the migration in App.OnStartup).
-    /// </summary>
-    public const string LegacyUpstreamAnalyticsApiKey = "phc_TYyyKIfGgL1CXZx7t9dY7igE3yNwNpjj9aqItSpNVLx";
 
     [JsonPropertyName("analyticsHost")]
     public string? AnalyticsHost { get; set; }
@@ -112,52 +101,19 @@ public class AppSettings
     [JsonPropertyName("floatingStatsPositionLocked")]
     public bool FloatingStatsPositionLocked { get; set; }
 
+    [JsonPropertyName("keyboardDeviceId")]
+    public string KeyboardDeviceId { get; set; } = "kb_laptop_5m";
+
+    [JsonPropertyName("mouseDeviceId")]
+    public string MouseDeviceId { get; set; } = "ms_kailh_bgm_90m";
+
+    // 自定义额定寿命（单位：万次），仅当设备类型选「自定义」时生效
+    [JsonPropertyName("keyboardCustomRatedWan")]
+    public long KeyboardCustomRatedWan { get; set; } = 5000;
+
+    [JsonPropertyName("mouseCustomRatedWan")]
+    public long MouseCustomRatedWan { get; set; } = 2000;
+
     [JsonPropertyName("languagePreference")]
     public string LanguagePreference { get; set; } = "system";  // "system" | "zh-Hans" | "zh-Hant" | "en"
-
-    // ===== Game session tracking =====
-
-    /// <summary>Track dedicated per-game sessions (League of Legends by default).</summary>
-    [JsonPropertyName("gameStatsEnabled")]
-    public bool GameStatsEnabled { get; set; } = true;
-
-    /// <summary>Show the compact in-game HUD while a game session is running.</summary>
-    [JsonPropertyName("gameOverlayEnabled")]
-    public bool GameOverlayEnabled { get; set; } = true;
-
-    /// <summary>
-    /// When true, input is only counted while a game window owns the foreground.
-    /// Off by default so exclusive-fullscreen games are never under-counted.
-    /// </summary>
-    [JsonPropertyName("gameStatsFrontmostOnly")]
-    public bool GameStatsFrontmostOnly { get; set; }
-
-    /// <summary>
-    /// When true, input recorded during a game session is also added to the daily
-    /// totals / per-app breakdown (the game session list stays independent either way).
-    /// </summary>
-    [JsonPropertyName("gameStatsMergeIntoDaily")]
-    public bool GameStatsMergeIntoDaily { get; set; } = true;
-
-    [JsonPropertyName("gameOverlayLeft")]
-    public double? GameOverlayLeft { get; set; }
-
-    [JsonPropertyName("gameOverlayTop")]
-    public double? GameOverlayTop { get; set; }
-
-    [JsonPropertyName("gameOverlayMonitorDeviceName")]
-    public string? GameOverlayMonitorDeviceName { get; set; }
-
-    [JsonPropertyName("gameOverlayPositionLocked")]
-    public bool GameOverlayPositionLocked { get; set; }
-
-    // ===== Daily insights / wellness =====
-
-    /// <summary>Remind me to take a break after a long uninterrupted session.</summary>
-    [JsonPropertyName("wellnessReminderEnabled")]
-    public bool WellnessReminderEnabled { get; set; } = true;
-
-    /// <summary>Continuous-use threshold, in minutes.</summary>
-    [JsonPropertyName("wellnessReminderMinutes")]
-    public int WellnessReminderMinutes { get; set; } = 90;
 }

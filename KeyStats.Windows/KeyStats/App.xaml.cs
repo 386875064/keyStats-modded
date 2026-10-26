@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Globalization;
@@ -26,6 +26,86 @@ namespace KeyStats;
 
 public partial class App : System.Windows.Application
 {
+    /// <summary>
+    /// 便携模式：所有第三方依赖与本地化卫星程序集都嵌入在 KeyStats.exe 内，
+    /// 单文件即可运行。静态构造保证在 XAML 解析前注册解析器。
+    /// </summary>
+    static App()
+    {
+        AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly;
+    }
+
+    private static readonly Dictionary<string, System.Reflection.Assembly> EmbeddedAssemblyCache =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly object EmbeddedAssemblyLock = new();
+
+    private static System.Reflection.Assembly? ResolveEmbeddedAssembly(object? sender, ResolveEventArgs args)
+    {
+        try
+        {
+            System.Reflection.AssemblyName requested;
+            try
+            {
+                requested = new System.Reflection.AssemblyName(args.Name);
+            }
+            catch (ArgumentException)
+            {
+                return null;
+            }
+
+            var simpleName = requested.Name;
+            if (string.IsNullOrEmpty(simpleName))
+            {
+                return null;
+            }
+
+            var culture = requested.CultureName;
+            var isSatellite = !string.IsNullOrEmpty(culture) &&
+                              simpleName.EndsWith(".resources", StringComparison.OrdinalIgnoreCase);
+            var resourceName = isSatellite
+                ? $"Embedded.satellite.{culture}.{simpleName}.dll"
+                : $"Embedded.{simpleName}.dll";
+
+            // 同一程序集只能加载一次：重复 Load(byte[]) 会产生彼此不兼容的多个副本
+            lock (EmbeddedAssemblyLock)
+            {
+                if (EmbeddedAssemblyCache.TryGetValue(resourceName, out var cached))
+                {
+                    return cached;
+                }
+
+                var host = System.Reflection.Assembly.GetExecutingAssembly();
+                using var stream = host.GetManifestResourceStream(resourceName);
+                if (stream == null)
+                {
+                    return null;
+                }
+
+                var buffer = new byte[stream.Length];
+                var offset = 0;
+                while (offset < buffer.Length)
+                {
+                    var read = stream.Read(buffer, offset, buffer.Length - offset);
+                    if (read <= 0)
+                    {
+                        break;
+                    }
+                    offset += read;
+                }
+
+                var loaded = System.Reflection.Assembly.Load(buffer);
+                EmbeddedAssemblyCache[resourceName] = loaded;
+                return loaded;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ResolveEmbeddedAssembly failed for {args.Name}: {ex.Message}");
+            return null;
+        }
+    }
+
     private Forms.NotifyIcon? _trayIcon;
     private TrayIconViewModel? _trayIconViewModel;
     private TrayContextMenuHost? _trayContextMenuHost;
@@ -33,25 +113,22 @@ public partial class App : System.Windows.Application
     private SettingsWindow? _settingsWindow;
     private NotificationSettingsWindow? _notificationSettingsWindow;
     private MouseCalibrationWindow? _mouseCalibrationWindow;
+    private DeviceLifespanWindow? _deviceLifespanWindow;
+    private InputDiagnosticsWindow? _inputDiagnosticsWindow;
+    private GameSessionsWindow? _gameSessionsWindow;
     private AppStatsWindow? _appStatsWindow;
     private KeyboardHeatmapWindow? _keyboardHeatmapWindow;
     private KeyHistoryWindow? _keyHistoryWindow;
+    private SyncSettingsWindow? _syncSettingsWindow;
     private FloatingStatsWindow? _floatingStatsWindow;
     private MenuItem? _floatingStatsMenuItem;
     private DispatcherTimer? _floatingStatsVisibilityTimer;
     private System.Threading.Mutex? _singleInstanceMutex;
     private string? _appVersion;
-
-    // 离线构建下恒为 null：InitializeAnalytics 不再创建客户端，
-    // 因此所有上报路径都在 null 检查处短路。保留字段与类型仅为兼容上游源码结构。
-    private IPostHogAnalytics? _postHogClient = null;
-
+    private IPostHogAnalytics? _postHogClient;
+    private SyncCoordinator? _syncCoordinator;
     private long _lastResumeRecoveryTicks;
     private bool _isFloatingStatsHiddenForFullscreen;
-    private GameStatsWindow? _gameStatsWindow;
-    private InsightsWindow? _insightsWindow;
-    private GameOverlayWindow? _gameOverlayWindow;
-    private MenuItem? _gameOverlayMenuItem;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -61,6 +138,8 @@ public partial class App : System.Windows.Application
         Console.WriteLine("=== KeyStats Debug Console ===");
 #endif
         base.OnStartup(e);
+
+
 
         // Global exception handlers
         AppDomain.CurrentDomain.UnhandledException += (s, args) =>
@@ -117,19 +196,22 @@ public partial class App : System.Windows.Application
             var statsManager = StatsManager.Instance;
             StartupManager.Instance.SyncWithSettings();
             _appVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "0.0.0";
-
-            // 离线构建：不启动云端同步。同步相关类仍保留在源码树中，但从不实例化，
-            // 因此本程序不会产生任何面向外的网络请求。
+            SyncServiceConfiguration.TryCreateBaseUri(out var syncServiceUri);
+            var dataFolderOverride = Environment.GetEnvironmentVariable("KEYSTATS_DATA_DIR");
+            var dataFolder = string.IsNullOrWhiteSpace(dataFolderOverride)
+                ? Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "KeyStats")
+                : dataFolderOverride!;
+            _syncCoordinator = new SyncCoordinator(
+                statsManager,
+                dataFolder,
+                syncServiceUri,
+                _appVersion);
+            _syncCoordinator.Start();
             InitializeAnalytics(statsManager);
             InputMonitorService.Instance.StartMonitoring();
-
-            // Per-game session tracking (League of Legends by default).
             GameSessionService.Instance.Start();
-            DailyInsightsService.Instance.Start();
-            if (statsManager.Settings.GameOverlayEnabled)
-            {
-                EnsureGameOverlayWindow();
-            }
 
             Console.WriteLine("Creating tray icon...");
             _trayIconViewModel = new TrayIconViewModel();
@@ -232,38 +314,6 @@ public partial class App : System.Windows.Application
         };
         menu.Items.Add(keyHistoryItem);
 
-        var gameStatsItem = new System.Windows.Controls.MenuItem { Header = KeyStats.Properties.Strings.Tray_GameStats };        gameStatsItem.Click += (s, e) =>
-        {
-            TrackClick("context_menu_game_stats");
-            ShowGameStatsWindow();
-        };
-        menu.Items.Add(gameStatsItem);
-
-        var insightsItem = new System.Windows.Controls.MenuItem { Header = KeyStats.Properties.Strings.Tray_Insights };
-        insightsItem.Click += (s, e) =>
-        {
-            TrackClick("context_menu_insights");
-            ShowInsightsWindow();
-        };
-        menu.Items.Add(insightsItem);
-
-        _gameOverlayMenuItem = new System.Windows.Controls.MenuItem
-        {
-            Header = KeyStats.Properties.Strings.Tray_GameOverlay,
-            IsCheckable = true,
-            IsChecked = StatsManager.Instance.Settings.GameOverlayEnabled
-        };
-        _gameOverlayMenuItem.Click += (s, e) =>
-        {
-            var menuItem = (System.Windows.Controls.MenuItem)s!;
-            TrackClick("context_menu_game_overlay", new Dictionary<string, object?>
-            {
-                ["enabled"] = menuItem.IsChecked
-            });
-            SetGameOverlayVisible(menuItem.IsChecked);
-        };
-        menu.Items.Add(_gameOverlayMenuItem);
-
         menu.Items.Add(new System.Windows.Controls.Separator());
 
         var quitItem = new System.Windows.Controls.MenuItem { Header = KeyStats.Properties.Strings.Tray_Quit };
@@ -304,6 +354,48 @@ public partial class App : System.Windows.Application
         _mouseCalibrationWindow.Activate();
     }
 
+    public void ShowDeviceLifespanWindow()
+    {
+        if (_deviceLifespanWindow != null && _deviceLifespanWindow.IsVisible)
+        {
+            _deviceLifespanWindow.Activate();
+            return;
+        }
+
+        _deviceLifespanWindow = new DeviceLifespanWindow();
+        _deviceLifespanWindow.Closed += (_, _) => _deviceLifespanWindow = null;
+        _deviceLifespanWindow.Show();
+        _deviceLifespanWindow.Activate();
+    }
+
+    public void ShowInputDiagnosticsWindow()
+    {
+        if (_inputDiagnosticsWindow != null && _inputDiagnosticsWindow.IsVisible)
+        {
+            _inputDiagnosticsWindow.Activate();
+            return;
+        }
+
+        _inputDiagnosticsWindow = new InputDiagnosticsWindow();
+        _inputDiagnosticsWindow.Closed += (_, _) => _inputDiagnosticsWindow = null;
+        _inputDiagnosticsWindow.Show();
+        _inputDiagnosticsWindow.Activate();
+    }
+
+    public void ShowGameSessionsWindow()
+    {
+        if (_gameSessionsWindow != null && _gameSessionsWindow.IsVisible)
+        {
+            _gameSessionsWindow.Activate();
+            return;
+        }
+
+        _gameSessionsWindow = new GameSessionsWindow();
+        _gameSessionsWindow.Closed += (_, _) => _gameSessionsWindow = null;
+        _gameSessionsWindow.Show();
+        _gameSessionsWindow.Activate();
+    }
+
     public void ShowSettingsWindow()
     {
         if (_settingsWindow != null && _settingsWindow.IsVisible)
@@ -316,6 +408,20 @@ public partial class App : System.Windows.Application
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _settingsWindow.Show();
         _settingsWindow.Activate();
+    }
+
+    public void ShowSyncSettingsWindow()
+    {
+        if (_syncSettingsWindow != null && _syncSettingsWindow.IsVisible)
+        {
+            _syncSettingsWindow.Activate();
+            return;
+        }
+
+        _syncSettingsWindow = new SyncSettingsWindow();
+        _syncSettingsWindow.Closed += (_, _) => _syncSettingsWindow = null;
+        _syncSettingsWindow.Show();
+        _syncSettingsWindow.Activate();
     }
 
     public void ShowStatsPanel()
@@ -498,93 +604,6 @@ public partial class App : System.Windows.Application
         _keyHistoryWindow.Activate();
     }
 
-    public void ShowGameStatsWindow()
-    {
-        if (!Dispatcher.CheckAccess())
-        {
-            Dispatcher.BeginInvoke(new Action(ShowGameStatsWindow));
-            return;
-        }
-
-        if (_gameStatsWindow != null && _gameStatsWindow.IsVisible)
-        {
-            _gameStatsWindow.Activate();
-            return;
-        }
-
-        _gameStatsWindow = new GameStatsWindow();
-        _gameStatsWindow.Closed += (_, _) => _gameStatsWindow = null;
-        _gameStatsWindow.Show();
-        _gameStatsWindow.Activate();
-    }
-
-    public void ShowInsightsWindow()
-    {
-        if (!Dispatcher.CheckAccess())
-        {
-            Dispatcher.BeginInvoke(new Action(ShowInsightsWindow));
-            return;
-        }
-
-        if (_insightsWindow != null && _insightsWindow.IsVisible)
-        {
-            _insightsWindow.Activate();
-            return;
-        }
-
-        _insightsWindow = new InsightsWindow();
-        _insightsWindow.Closed += (_, _) => _insightsWindow = null;
-        _insightsWindow.Show();
-        _insightsWindow.Activate();
-    }
-
-    /// <summary>
-    /// Enables or disables the in-game HUD. Shared by the tray menu and the game stats window.
-    /// </summary>
-    public void SetGameOverlayVisible(bool isVisible)
-    {
-        if (!Dispatcher.CheckAccess())
-        {
-            Dispatcher.BeginInvoke(new Action(() => SetGameOverlayVisible(isVisible)));
-            return;
-        }
-
-        var settings = StatsManager.Instance.Settings;
-        if (settings.GameOverlayEnabled != isVisible)
-        {
-            settings.GameOverlayEnabled = isVisible;
-            StatsManager.Instance.SaveSettings();
-        }
-
-        if (_gameOverlayMenuItem != null)
-        {
-            _gameOverlayMenuItem.IsChecked = isVisible;
-        }
-
-        if (isVisible)
-        {
-            EnsureGameOverlayWindow();
-            return;
-        }
-
-        _gameOverlayWindow?.Close();
-        _gameOverlayWindow = null;
-    }
-
-    private void EnsureGameOverlayWindow()
-    {
-        if (_gameOverlayWindow != null)
-        {
-            return;
-        }
-
-        _gameOverlayWindow = new GameOverlayWindow();
-        _gameOverlayWindow.Closed += (_, _) => _gameOverlayWindow = null;
-        // Shown then immediately hidden: visibility is driven by the live session state.
-        _gameOverlayWindow.Show();
-        _gameOverlayWindow.Hide();
-    }
-
     public void ExportData()
     {
         // 确保在 UI 线程上执行
@@ -657,6 +676,11 @@ public partial class App : System.Windows.Application
 
         try
         {
+            if (_syncCoordinator?.BlocksImport == true)
+            {
+                throw new InvalidOperationException(KeyStats.Properties.Strings.Error_ImportDisabledWhileSyncing);
+            }
+
             var dialog = new OpenFileDialog
             {
                 Title = KeyStats.Properties.Strings.Dialog_ImportTitle,
@@ -752,11 +776,10 @@ public partial class App : System.Windows.Application
         }
         _floatingStatsWindow?.Close();
         _floatingStatsWindow = null;
-        _gameOverlayWindow?.Close();
-        _gameOverlayWindow = null;
-        GameSessionService.Instance.Stop();
-        DailyInsightsService.Instance.Stop();
         InputMonitorService.Instance.StopMonitoring();
+        GameSessionService.Instance.Stop();
+        _syncCoordinator?.Dispose();
+        _syncCoordinator = null;
         StatsManager.Instance.Dispose();
         ThemeManager.Instance.Dispose();
         _singleInstanceMutex?.ReleaseMutex();
@@ -875,22 +898,92 @@ public partial class App : System.Windows.Application
     {
         var settings = statsManager.Settings;
 
-        // One-time migration: drop the upstream author's hard-coded PostHog key so this
-        // build never reports usage data into a third-party analytics account.
-        if (string.Equals(
-                settings.AnalyticsApiKey,
-                KeyStats.Models.AppSettings.LegacyUpstreamAnalyticsApiKey,
-                StringComparison.Ordinal))
+        // ===== 离线构建：完全停用第三方上报（PostHog 埋点），保证零出站 =====
+        // 保留以下代码路径仅供将来参考；客户端始终为 null，所有上报在 CaptureEvent 判空处短路。
+        if (!string.IsNullOrEmpty(settings.AnalyticsApiKey) || settings.AnalyticsEnabled)
         {
+            // 一次性迁移：清掉旧配置里继承来的上游 key 与开关
             settings.AnalyticsApiKey = null;
             settings.AnalyticsEnabled = false;
             statsManager.SaveSettings();
-            Console.WriteLine("Analytics: purged legacy upstream PostHog key");
+        }
+        return;
+
+#pragma warning disable CS0162 // 离线构建下以下逻辑不可达
+        if (!settings.AnalyticsEnabled)
+        {
+            return;
         }
 
-        // 离线构建：不再初始化任何分析客户端。_postHogClient 恒为 null，
-        // 所有 Track* 调用都会在 null 检查处短路返回。
-        Console.WriteLine("Analytics: disabled (offline build)");
+        var apiKey = settings.AnalyticsApiKey;
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return;
+        }
+
+        var host = string.IsNullOrWhiteSpace(settings.AnalyticsHost)
+            ? "https://app.posthog.com"
+            : settings.AnalyticsHost!.TrimEnd('/');
+
+        try
+        {
+            // 使用 DotPostHog 创建分析客户端
+            // DotPostHog 支持 .NET Framework 4.8
+            _postHogClient = PostHogAnalytics.Create(
+                publicApiKey: apiKey,
+                host: host
+            );
+
+            var updated = false;
+            if (string.IsNullOrWhiteSpace(settings.AnalyticsDistinctId))
+            {
+                settings.AnalyticsDistinctId = Guid.NewGuid().ToString("N");
+                updated = true;
+            }
+
+            if (settings.AnalyticsFirstOpenUtc == null)
+            {
+                settings.AnalyticsFirstOpenUtc = DateTime.UtcNow;
+                updated = true;
+            }
+
+            if (updated)
+            {
+                statsManager.SaveSettings();
+            }
+
+            // 使用 Identify 设置 distinctId
+            var distinctId = settings.AnalyticsDistinctId;
+            if (!string.IsNullOrWhiteSpace(distinctId))
+            {
+                try
+                {
+                    _postHogClient.Identify(distinctId, null);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Failed to identify user: {ex}");
+                }
+            }
+
+            if (!settings.AnalyticsInstallTracked)
+            {
+                CaptureEvent("app_install", statsManager, new Dictionary<string, object?>
+                {
+                    ["install_utc"] = settings.AnalyticsFirstOpenUtc?.ToString("o")
+                });
+                settings.AnalyticsInstallTracked = true;
+                statsManager.SaveSettings();
+            }
+
+            CaptureEvent("app_open", statsManager, null);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to initialize analytics: {ex}");
+            // 分析初始化失败不应阻止应用启动
+        }
+#pragma warning restore CS0162
     }
 
     private void CaptureEvent(string eventName, StatsManager statsManager, Dictionary<string, object?>? extraProperties)
@@ -1107,6 +1200,7 @@ public partial class App : System.Windows.Application
     /// 获取 App 实例（用于其他类调用追踪方法）
     /// </summary>
     public static App? CurrentApp => Current as App;
+    public SyncCoordinator? SyncCoordinator => _syncCoordinator;
 
     private void RegisterSystemEventHandlers()
     {
@@ -1206,6 +1300,7 @@ public partial class App : System.Windows.Application
         {
             Console.WriteLine($"Tray icon resume recovery failed: {ex}");
         }
+        _syncCoordinator?.HandleAppResume();
     }
 
     private void RecreateTrayIntegration()

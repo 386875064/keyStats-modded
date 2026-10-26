@@ -43,3 +43,6 @@ fastlane/test_output
 
 # Claude
 .claude/settings.json
+
+# Offline build helper (local only, do not ship)
+KeyStats.Windows/NuGet.Config

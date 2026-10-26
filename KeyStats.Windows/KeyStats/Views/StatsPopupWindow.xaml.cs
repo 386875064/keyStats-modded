@@ -255,12 +255,6 @@ public partial class StatsPopupWindow : Window
         App.CurrentApp?.ShowAppStatsWindow();
     }
 
-    private void OpenInsights_Click(object sender, RoutedEventArgs e)
-    {
-        App.CurrentApp?.TrackClick("open_insights");
-        App.CurrentApp?.ShowInsightsWindow();
-    }
-
     private void OpenKeyboardHeatmap_Click(object sender, RoutedEventArgs e)
     {
         App.CurrentApp?.TrackClick("open_keyboard_heatmap");

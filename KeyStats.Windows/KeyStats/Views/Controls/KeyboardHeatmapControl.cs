@@ -46,6 +46,8 @@ public class KeyboardHeatmapControl : FrameworkElement
 
     private Dictionary<string, int> _keyCounts = new(StringComparer.Ordinal);
     private int _maxCount;
+    private bool _lifespanMode;
+    private long _ratedPerKey = 1;
 
     public KeyboardHeatmapControl()
     {
@@ -56,6 +58,23 @@ public class KeyboardHeatmapControl : FrameworkElement
     }
 
     public void Apply(IDictionary<string, int>? keyCounts)
+    {
+        _lifespanMode = false;
+        ApplyCore(keyCounts);
+    }
+
+    /// <summary>
+    /// 寿命模式：按「已用次数 / 每键额定寿命」着色（绿=健康 → 橙 → 红=磨损严重），
+    /// 角标显示剩余百分比。
+    /// </summary>
+    public void ApplyLifespan(IDictionary<string, int>? keyCounts, long ratedPerKey)
+    {
+        _lifespanMode = true;
+        _ratedPerKey = Math.Max(1, ratedPerKey);
+        ApplyCore(keyCounts);
+    }
+
+    private void ApplyCore(IDictionary<string, int>? keyCounts)
     {
         _keyCounts = keyCounts == null
             ? new Dictionary<string, int>(StringComparer.Ordinal)
@@ -87,13 +106,56 @@ public class KeyboardHeatmapControl : FrameworkElement
         {
             var frame = KeyFrame(key, metrics);
             var count = _keyCounts.TryGetValue(key.Id, out var value) ? value : 0;
-            var fillColor = ColorForCount(count, isDarkMode);
+            var fillColor = _lifespanMode ? ColorForWear(count, isDarkMode) : ColorForCount(count, isDarkMode);
             var radius = Math.Max(4, metrics.Scale * 0.14);
 
             drawingContext.DrawRoundedRectangle(CreateBrush(fillColor), borderPen, frame, radius, radius);
             DrawKeyLegend(drawingContext, key, frame, metrics.Scale, textBrush, defaultTextColor);
-            DrawCountBadge(drawingContext, count, frame, metrics.Scale, isDarkMode);
+            if (_lifespanMode)
+            {
+                DrawLifespanBadge(drawingContext, count, frame, metrics.Scale, isDarkMode);
+            }
+            else
+            {
+                DrawCountBadge(drawingContext, count, frame, metrics.Scale, isDarkMode);
+            }
         }
+    }
+
+    /// <summary>
+    /// 磨损配色：0% 磨损=绿色（全新），50%=橙色，100% 及以上=红色。
+    /// 寿命模式下零计数的键显示为「全新」的绿色是合理的。
+    /// </summary>
+    private Color ColorForWear(int count, bool isDarkMode)
+    {
+        var wear = Math.Max(0.0, Math.Min(1.0, count / (double)_ratedPerKey));
+        var healthy = isDarkMode ? Color.FromRgb(74, 160, 100) : Color.FromRgb(67, 160, 71);
+        var mid = Color.FromRgb(230, 145, 56);
+        var worn = Color.FromRgb(209, 72, 65);
+        return wear < 0.5
+            ? Blend(healthy, mid, wear * 2)
+            : Blend(mid, worn, (wear - 0.5) * 2);
+    }
+
+    private void DrawLifespanBadge(DrawingContext drawingContext, int count, Rect frame, double scale, bool isDarkMode)
+    {
+        var remainingPercent = Math.Max(0.0, 100.0 - count * 100.0 / _ratedPerKey);
+        var text = remainingPercent >= 99.95
+            ? "100%"
+            : remainingPercent >= 10
+            ? $"{remainingPercent:F0}%"
+            : $"{remainingPercent:F1}%";
+        DrawTextBadge(drawingContext, text, frame, scale, isDarkMode);
+    }
+
+    private void DrawCountBadge(DrawingContext drawingContext, int count, Rect frame, double scale, bool isDarkMode)
+    {
+        if (count <= 0)
+        {
+            return;
+        }
+        var text = count.ToString("N0", CultureInfo.CurrentCulture);
+        DrawTextBadge(drawingContext, text, frame, scale, isDarkMode, count);
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -220,13 +282,8 @@ public class KeyboardHeatmapControl : FrameworkElement
         drawingContext.DrawText(lowerText, lowerPoint);
     }
 
-    private void DrawCountBadge(DrawingContext drawingContext, int count, Rect frame, double scale, bool isDarkMode)
+    private void DrawTextBadge(DrawingContext drawingContext, string text, Rect frame, double scale, bool isDarkMode, int countForCompact = -1)
     {
-        if (count <= 0)
-        {
-            return;
-        }
-
         var inset = Math.Max(3, scale * 0.08);
         var horizontalPadding = Math.Max(4, scale * 0.10);
         var verticalPadding = Math.Max(1.5, scale * 0.05);
@@ -242,13 +299,12 @@ public class KeyboardHeatmapControl : FrameworkElement
         var brush = CreateBrush(textColor);
 
         var fontSize = Math.Max(7, Math.Min(10.5, scale * 0.20));
-        var text = count.ToString("N0", CultureInfo.CurrentCulture);
         var formatted = CreateText(text, fontSize, FontWeights.SemiBold, brush, "Consolas");
 
         var fullWidth = formatted.Width + horizontalPadding * 2;
-        if (fullWidth > maxBadgeWidth)
+        if (fullWidth > maxBadgeWidth && countForCompact > 0)
         {
-            text = CompactCountText(count);
+            text = CompactCountText(countForCompact);
             formatted = CreateText(text, fontSize, FontWeights.SemiBold, brush, "Consolas");
         }
 
@@ -257,8 +313,15 @@ public class KeyboardHeatmapControl : FrameworkElement
         if (badgeWidth > maxBadgeWidth)
         {
             badgeWidth = maxBadgeWidth;
-            text = CompactCountText(count, 3);
-            formatted = CreateText(text, fontSize, FontWeights.SemiBold, brush, "Consolas");
+            if (countForCompact > 0)
+            {
+                text = CompactCountText(countForCompact, 3);
+                formatted = CreateText(text, fontSize, FontWeights.SemiBold, brush, "Consolas");
+            }
+            else
+            {
+                formatted = CreateText(text, Math.Max(6, fontSize * 0.85), FontWeights.SemiBold, brush, "Consolas");
+            }
         }
 
         var badgeRect = new Rect(

@@ -93,7 +93,14 @@ public class StatsManager : IDisposable
 
     private StatsManager()
     {
-        _dataFolder = KeyStats.Helpers.AppPaths.GetDataFolder();
+        // 数据目录可用环境变量覆盖（便于隔离测试，不影响正常使用）
+        var overrideFolder = Environment.GetEnvironmentVariable("KEYSTATS_DATA_DIR");
+        _dataFolder = string.IsNullOrWhiteSpace(overrideFolder)
+            ? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "KeyStats")
+            : overrideFolder!;
+        Directory.CreateDirectory(_dataFolder);
 
         _statsFilePath = Path.Combine(_dataFolder, "daily_stats.json");
         _historyFilePath = Path.Combine(_dataFolder, "history.json");
@@ -117,136 +124,31 @@ public class StatsManager : IDisposable
         SetupInputMonitor();
     }
 
-    // Set by GameSessionService while a tracked game session is running. During that
-    // window the hook channel steps aside (see ShouldIgnoreHookInput) because the game
-    // session may be fed by the Raw Input channel instead, and it forwards every
-    // accepted event back here through the ApplyGame* methods. A single counting path
-    // is therefore active at any moment — no double counting.
-    private volatile bool _gameSessionActive;
-
     private void SetupInputMonitor()
     {
         var monitor = InputMonitorService.Instance;
-        monitor.KeyPressed += OnHookKeyPressed;
-        monitor.LeftMouseClicked += OnHookLeftClick;
-        monitor.RightMouseClicked += OnHookRightClick;
-        monitor.MiddleMouseClicked += OnHookMiddleClick;
-        monitor.SideBackMouseClicked += OnHookSideBackClick;
-        monitor.SideForwardMouseClicked += OnHookSideForwardClick;
-        monitor.MouseMoved += OnHookMouseMoved;
-        monitor.MouseScrolled += OnHookMouseScrolled;
+        monitor.KeyPressed += OnKeyPressed;
+        monitor.LeftMouseClicked += OnLeftClick;
+        monitor.RightMouseClicked += OnRightClick;
+        monitor.MiddleMouseClicked += OnMiddleClick;
+        monitor.SideBackMouseClicked += OnSideBackClick;
+        monitor.SideForwardMouseClicked += OnSideForwardClick;
+        monitor.MouseMoved += OnMouseMoved;
+        monitor.MouseScrolled += OnMouseScrolled;
     }
 
     private void TeardownInputMonitor()
     {
         var monitor = InputMonitorService.Instance;
-        monitor.KeyPressed -= OnHookKeyPressed;
-        monitor.LeftMouseClicked -= OnHookLeftClick;
-        monitor.RightMouseClicked -= OnHookRightClick;
-        monitor.MiddleMouseClicked -= OnHookMiddleClick;
-        monitor.SideBackMouseClicked -= OnHookSideBackClick;
-        monitor.SideForwardMouseClicked -= OnHookSideForwardClick;
-        monitor.MouseMoved -= OnHookMouseMoved;
-        monitor.MouseScrolled -= OnHookMouseScrolled;
+        monitor.KeyPressed -= OnKeyPressed;
+        monitor.LeftMouseClicked -= OnLeftClick;
+        monitor.RightMouseClicked -= OnRightClick;
+        monitor.MiddleMouseClicked -= OnMiddleClick;
+        monitor.SideBackMouseClicked -= OnSideBackClick;
+        monitor.SideForwardMouseClicked -= OnSideForwardClick;
+        monitor.MouseMoved -= OnMouseMoved;
+        monitor.MouseScrolled -= OnMouseScrolled;
     }
-
-    #region Game session bridge
-
-    private bool ShouldIgnoreHookInput =>
-        _gameSessionActive && Settings.GameStatsMergeIntoDaily;
-
-    /// <summary>Called by GameSessionService when a tracked session starts or stops.</summary>
-    public void SetGameSessionActive(bool active)
-    {
-        _gameSessionActive = active;
-    }
-
-    public void ApplyGameKeyPress(string keyName, string appName, string displayName)
-    {
-        OnKeyPressed(keyName, appName, displayName);
-    }
-
-    public void ApplyGameClick(MouseButtonKind kind, string appName, string displayName)
-    {
-        switch (kind)
-        {
-            case MouseButtonKind.Left:
-                OnLeftClick(appName, displayName);
-                break;
-            case MouseButtonKind.Right:
-                OnRightClick(appName, displayName);
-                break;
-            case MouseButtonKind.Middle:
-                OnMiddleClick(appName, displayName);
-                break;
-            case MouseButtonKind.SideBack:
-                OnSideBackClick(appName, displayName);
-                break;
-            case MouseButtonKind.SideForward:
-                OnSideForwardClick(appName, displayName);
-                break;
-        }
-    }
-
-    public void ApplyGameMouseMove(double distance)
-    {
-        OnMouseMoved(distance);
-    }
-
-    public void ApplyGameScroll(double distance, string appName, string displayName)
-    {
-        OnMouseScrolled(distance, appName, displayName);
-    }
-
-    private void OnHookKeyPressed(string keyName, string appName, string displayName)
-    {
-        if (ShouldIgnoreHookInput) return;
-        OnKeyPressed(keyName, appName, displayName);
-    }
-
-    private void OnHookLeftClick(string appName, string displayName)
-    {
-        if (ShouldIgnoreHookInput) return;
-        OnLeftClick(appName, displayName);
-    }
-
-    private void OnHookRightClick(string appName, string displayName)
-    {
-        if (ShouldIgnoreHookInput) return;
-        OnRightClick(appName, displayName);
-    }
-
-    private void OnHookMiddleClick(string appName, string displayName)
-    {
-        if (ShouldIgnoreHookInput) return;
-        OnMiddleClick(appName, displayName);
-    }
-
-    private void OnHookSideBackClick(string appName, string displayName)
-    {
-        if (ShouldIgnoreHookInput) return;
-        OnSideBackClick(appName, displayName);
-    }
-
-    private void OnHookSideForwardClick(string appName, string displayName)
-    {
-        if (ShouldIgnoreHookInput) return;
-        OnSideForwardClick(appName, displayName);
-    }
-
-    private void OnHookMouseMoved(double distance)
-    {
-        if (ShouldIgnoreHookInput) return;
-        OnMouseMoved(distance);
-    }
-
-    private void OnHookMouseScrolled(double distance, string appName, string displayName)
-    {
-        if (ShouldIgnoreHookInput) return;
-        OnMouseScrolled(distance, appName, displayName);
-    }
-
-    #endregion
 
     private void UpdateAppStats(string appName, string displayName, Action<AppStats> updateAction)
     {
@@ -1446,6 +1348,164 @@ public class StatsManager : IDisposable
                 .ThenBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
                 .Select(x => (x.Key, x.Value))
                 .ToList();
+        }
+    }
+
+    /// <summary>
+    /// 本地累计总量（历史 + 今天），用于设备寿命估算。
+    /// History 中若已含今天则跳过，避免与 CurrentStats 重复计数。
+    /// </summary>
+    public (long KeyPresses, long Clicks) GetLifetimeTotals()
+    {
+        lock (_lock)
+        {
+            long keyPresses = 0;
+            long clicks = 0;
+            var currentKey = CurrentStats.Date.ToString("yyyy-MM-dd");
+            foreach (var pair in History)
+            {
+                if (string.Equals(pair.Key, currentKey, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                keyPresses += Math.Max(0, pair.Value.KeyPresses);
+                clicks += Math.Max(0, pair.Value.TotalClicks);
+            }
+            keyPresses += Math.Max(0, CurrentStats.KeyPresses);
+            clicks += Math.Max(0, CurrentStats.TotalClicks);
+            return (keyPresses, clicks);
+        }
+    }
+
+    /// <summary>
+    /// 累计鼠标移动/滚动距离（历史 + 今天），用于对局统计等需要跨天基线的场景。
+    /// </summary>
+    public (double MouseDistance, double ScrollDistance) GetLifetimeMovement()
+    {
+        lock (_lock)
+        {
+            double distance = 0;
+            double scroll = 0;
+            var currentKey = CurrentStats.Date.ToString("yyyy-MM-dd");
+
+            void Merge(DailyStats daily)
+            {
+                distance += Math.Max(0, daily.MouseDistance);
+                scroll += Math.Max(0, daily.ScrollDistance);
+            }
+
+            foreach (var pair in History)
+            {
+                if (!string.Equals(pair.Key, currentKey, StringComparison.Ordinal))
+                {
+                    Merge(pair.Value);
+                }
+            }
+            Merge(CurrentStats);
+
+            return (distance, scroll);
+        }
+    }
+
+    /// <summary>数据目录（对局记录等附属文件与统计文件放在一起）。</summary>
+    public string DataFolder => _dataFolder;
+
+    /// <summary>
+    /// 记录覆盖的日历天数（首条有数据的历史日至今天），用于把累计用量折算成日均。
+    /// </summary>
+    public int GetRecordedCalendarDays()
+    {
+        lock (_lock)
+        {
+            var today = DateTime.Today;
+            DateTime? firstDate = null;
+            foreach (var pair in History)
+            {
+                if (Math.Max(0, pair.Value.KeyPresses) <= 0 && Math.Max(0, pair.Value.TotalClicks) <= 0)
+                {
+                    continue; // 空数据日不计入记录起点
+                }
+
+                if (DateTime.TryParseExact(pair.Key, "yyyy-MM-dd", CultureInfo.InvariantCulture,
+                        DateTimeStyles.None, out var date))
+                {
+                    if (firstDate == null || date < firstDate.Value)
+                    {
+                        firstDate = date;
+                    }
+                }
+            }
+
+            return firstDate.HasValue ? Math.Max(1, (today - firstDate.Value).Days + 1) : 1;
+        }
+    }
+
+    /// <summary>
+    /// 本地累计逐键次数（历史 + 今天），键名与 KeyboardHeatmapControl 布局一致。
+    /// 用于设备寿命面板的逐键磨损着色。
+    /// </summary>
+    public Dictionary<string, int> GetLifetimeKeyCounts()
+    {
+        lock (_lock)
+        {
+            var merged = new Dictionary<string, int>(StringComparer.Ordinal);
+            var currentKey = CurrentStats.Date.ToString("yyyy-MM-dd");
+
+            void Merge(DailyStats daily)
+            {
+                foreach (var kvp in daily.KeyPressCounts)
+                {
+                    var count = Math.Max(0, kvp.Value);
+                    if (count <= 0)
+                    {
+                        continue;
+                    }
+                    merged[kvp.Key] = SafeAdd(merged.TryGetValue(kvp.Key, out var existing) ? existing : 0, count);
+                }
+            }
+
+            foreach (var pair in History)
+            {
+                if (!string.Equals(pair.Key, currentKey, StringComparison.Ordinal))
+                {
+                    Merge(pair.Value);
+                }
+            }
+            Merge(CurrentStats);
+
+            return AggregateKeyboardHeatmapCounts(merged);
+        }
+    }
+
+    /// <summary>
+    /// 本地累计分键点击（历史 + 今天）：左 / 右 / 中 / 侧前 / 侧后。
+    /// </summary>
+    public (long Left, long Right, long Middle, long SideForward, long SideBack) GetLifetimeClickBreakdown()
+    {
+        lock (_lock)
+        {
+            long left = 0, right = 0, middle = 0, sideForward = 0, sideBack = 0;
+            var currentKey = CurrentStats.Date.ToString("yyyy-MM-dd");
+
+            void Merge(DailyStats daily)
+            {
+                left += Math.Max(0, daily.LeftClicks);
+                right += Math.Max(0, daily.RightClicks);
+                middle += Math.Max(0, daily.MiddleClicks);
+                sideForward += Math.Max(0, daily.SideForwardClicks);
+                sideBack += Math.Max(0, daily.SideBackClicks);
+            }
+
+            foreach (var pair in History)
+            {
+                if (!string.Equals(pair.Key, currentKey, StringComparison.Ordinal))
+                {
+                    Merge(pair.Value);
+                }
+            }
+            Merge(CurrentStats);
+
+            return (left, right, middle, sideForward, sideBack);
         }
     }
 

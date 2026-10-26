@@ -203,12 +203,6 @@ public static class ActiveWindowManager
             return "Minecraft";
         }
 
-        var knownGameName = GetKnownGameDisplayName(processName);
-        if (!string.IsNullOrWhiteSpace(knownGameName))
-        {
-            return knownGameName!;
-        }
-
         if (HostProcessNames.Contains(processName))
         {
             var titleName = ExtractMeaningfulTitle(windowTitle);
@@ -224,21 +218,6 @@ public static class ActiveWindowManager
     private static bool IsMinecraftWindow(string windowTitle)
     {
         return windowTitle.IndexOf("minecraft", StringComparison.OrdinalIgnoreCase) >= 0;
-    }
-
-    /// <summary>
-    /// Maps known game processes to a friendlier, localized label so per-app
-    /// statistics do not show raw executable names.
-    /// </summary>
-    private static string? GetKnownGameDisplayName(string processName)
-    {
-        if (string.Equals(processName, "League of Legends", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(processName, "LeagueofLegends", StringComparison.OrdinalIgnoreCase))
-        {
-            return KeyStats.Properties.Strings.Game_LoL_Name;
-        }
-
-        return null;
     }
 
     private static string ExtractMeaningfulTitle(string windowTitle)

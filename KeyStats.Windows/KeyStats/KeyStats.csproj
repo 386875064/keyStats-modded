@@ -16,14 +16,29 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AssemblyName>KeyStats</AssemblyName>
     <RootNamespace>KeyStats</RootNamespace>
-    <Version>1.72</Version>
+    <Version>1.52</Version>
     <Authors>KeyStats</Authors>
     <Product>KeyStats</Product>
     <Description>Keyboard and mouse statistics tracker for Windows</Description>
     <LangVersion>10.0</LangVersion>
+    <!-- 依赖程序集全部嵌入 exe（见 App.ResolveEmbeddedAssembly），输出目录只需单个 KeyStats.exe 即可运行 -->
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
     <SyncServiceBaseUrl Condition="'$(SyncServiceBaseUrl)' == '' and '$(Configuration)' == 'Debug'">https://keystats-sync-staging.istiancz.workers.dev</SyncServiceBaseUrl>
     <SyncServiceBaseUrl Condition="'$(SyncServiceBaseUrl)' == ''"></SyncServiceBaseUrl>
   </PropertyGroup>
+
+  <!-- 便携模式：把编译好的第三方依赖与本地化卫星程序集嵌入主程序 -->
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\Embedded\*.dll">
+      <LogicalName>Embedded.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\Embedded\satellite\zh-Hans\KeyStats.resources.dll">
+      <LogicalName>Embedded.satellite.zh-Hans.KeyStats.resources.dll</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\Embedded\satellite\zh-Hant\KeyStats.resources.dll">
+      <LogicalName>Embedded.satellite.zh-Hant.KeyStats.resources.dll</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="1.1.0" />

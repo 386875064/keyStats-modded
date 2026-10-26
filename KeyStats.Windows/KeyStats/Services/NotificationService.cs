@@ -38,8 +38,23 @@ public class NotificationService
         }
     }
 
-    public void ClearNotifications()
+    /// <summary>发送自定义提示（对局结算等）。</summary>
+    public void SendCustomNotification(string title, string body)
     {
+        try
+        {
+            new ToastContentBuilder()
+                .AddText(title)
+                .AddText(body)
+                .Show();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error showing custom notification: {ex.Message}");
+        }
+    }
+
+    public void ClearNotifications()    {
         try
         {
             ToastNotificationManagerCompat.History.Clear();
