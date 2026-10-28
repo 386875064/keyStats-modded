@@ -178,10 +178,15 @@ jobs:
         shell: pwsh
         working-directory: KeyStats.Windows
         run: |
-          if ($env:KEYSTATS_SYNC_SERVICE_URL -notmatch '^https://[A-Za-z0-9.-]+\.workers\.dev/?$') {
-            throw 'KEYSTATS_SYNC_PRODUCTION_URL must be a production workers.dev URL.'
-          }
-          .\build.ps1 -Configuration Release -SyncServiceBaseUrl $env:KEYSTATS_SYNC_SERVICE_URL
+          # 纯离线构建：不依赖同步服务地址，直接 dotnet build（与本地发布命令一致）
+          dotnet build KeyStats/KeyStats.csproj -c Release -o dist/KeyStats-Portable
+
+      - name: Package portable zip
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.VERSION }}"
+          Compress-Archive -Path "KeyStats.Windows/dist/KeyStats-Portable/*" `
+                           -DestinationPath "KeyStats.Windows/dist/KeyStats-Windows-$version.zip" -Force
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
