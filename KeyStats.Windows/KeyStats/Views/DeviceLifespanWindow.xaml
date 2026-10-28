@@ -107,7 +107,7 @@
                         <TextBlock Text="磨损严重" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
                     </StackPanel>
                 </Grid>
-                <TextBlock Text="键帽颜色 = 该键已用次数占额定寿命的比例，角标为剩余百分比；点击任意键可重置该键（换键后从 0 重算）"
+                <TextBlock Text="键帽颜色 = 该键已用次数占额定寿命的比例，角标为剩余百分比；右键任意键 → 重置该键磨损（换键后从 0 重算）"
                            FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,8"
                            TextWrapping="Wrap"/>
                 <Border Height="300">
@@ -131,7 +131,7 @@
             <StackPanel>
                 <TextBlock Text="鼠标 · 按键磨损" FontSize="13" FontWeight="SemiBold"
                            Foreground="{DynamicResource TextPrimaryBrush}"/>
-                <TextBlock Text="左 / 右键按所选微动寿命估算；中键与侧键通常沿用鼠标原装微动，固定按 500 万次估算；点击某个分区可重置该分区"
+                <TextBlock Text="左 / 右键按所选微动寿命估算；中键与侧键通常沿用鼠标原装微动，固定按 500 万次估算；右键某个分区 → 重置该分区"
                            FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,8"
                            TextWrapping="Wrap"/>
                 <Border Height="190">

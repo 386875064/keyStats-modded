@@ -26,8 +26,8 @@ public partial class DeviceLifespanWindow : Window
         Closed += OnClosed;
         ThemeManager.Instance.ThemeChanged += OnThemeChanged;
 
-        KeyboardLifespanView.KeyClicked += OnKeyClicked;
-        MouseLifespanView.ButtonClicked += OnMouseButtonClicked;
+        KeyboardLifespanView.KeyResetRequested += OnKeyResetRequested;
+        MouseLifespanView.ButtonResetRequested += OnMouseButtonResetRequested;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -217,24 +217,13 @@ public partial class DeviceLifespanWindow : Window
             Adjust("Side", raw.SideBack));
     }
 
-    // ===== 寿命重置 =====
+    // ===== 寿命重置（右键菜单触发，菜单项本身就是明确意图，不再二次弹窗）=====
 
-    private void OnKeyClicked(string keyId)
+    private void OnKeyResetRequested(string keyId)
     {
         var raw = StatsManager.Instance.GetLifetimeKeyCounts();
         var used = raw.TryGetValue(keyId, out var value) ? value : 0;
         if (used <= 0)
-        {
-            return;
-        }
-
-        var confirmed = MessageBox.Show(
-            this,
-            $"重置「{keyId}」的磨损？\n\n当前累计 {used:N0} 次将作为新基线，之后该键从 0 重算。\n原始统计数据不会删除，其它报表不受影响。",
-            "重置按键寿命",
-            MessageBoxButton.OKCancel,
-            MessageBoxImage.Question);
-        if (confirmed != MessageBoxResult.OK)
         {
             return;
         }
@@ -245,16 +234,8 @@ public partial class DeviceLifespanWindow : Window
         RefreshDisplay();
     }
 
-    private void OnMouseButtonClicked(string kind)
+    private void OnMouseButtonResetRequested(string kind)
     {
-        var label = kind switch
-        {
-            "Left" => "左键",
-            "Right" => "右键",
-            "Middle" => "中键",
-            _ => "侧键"
-        };
-
         var raw = StatsManager.Instance.GetLifetimeClickBreakdown();
         var used = kind switch
         {
@@ -264,17 +245,6 @@ public partial class DeviceLifespanWindow : Window
             _ => raw.SideForward + raw.SideBack
         };
         if (used <= 0)
-        {
-            return;
-        }
-
-        var confirmed = MessageBox.Show(
-            this,
-            $"重置鼠标「{label}」的磨损？\n\n当前累计 {used:N0} 次将作为新基线，之后从 0 重算。\n原始统计数据不会删除，其它报表不受影响。",
-            "重置鼠标按键寿命",
-            MessageBoxButton.OKCancel,
-            MessageBoxImage.Question);
-        if (confirmed != MessageBoxResult.OK)
         {
             return;
         }

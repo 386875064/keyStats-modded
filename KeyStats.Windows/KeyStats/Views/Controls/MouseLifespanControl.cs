@@ -39,8 +39,8 @@ public class MouseLifespanControl : FrameworkElement
     private Rect _hitSide1;
     private Rect _hitSide2;
 
-    /// <summary>点击某个分区时触发，参数：Left / Right / Middle / Side。</summary>
-    public event Action<string>? ButtonClicked;
+    /// <summary>右键某个分区 → 菜单确认后触发，参数：Left / Right / Middle / Side。</summary>
+    public event Action<string>? ButtonResetRequested;
 
     public MouseLifespanControl()
     {
@@ -50,34 +50,63 @@ public class MouseLifespanControl : FrameworkElement
         Unloaded += OnUnloaded;
     }
 
-    protected override void OnMouseLeftButtonDown(System.Windows.Input.MouseButtonEventArgs e)
+    protected override void OnMouseRightButtonDown(System.Windows.Input.MouseButtonEventArgs e)
     {
-        base.OnMouseLeftButtonDown(e);
+        base.OnMouseRightButtonDown(e);
 
-        var point = e.GetPosition(this);
-        string? hit = null;
+        var kind = HitTestZone(e.GetPosition(this));
+        if (kind == null)
+        {
+            return;
+        }
+
+        var label = kind switch
+        {
+            "Left" => "左键",
+            "Right" => "右键",
+            "Middle" => "中键",
+            _ => "侧键"
+        };
+
+        var menu = new System.Windows.Controls.ContextMenu
+        {
+            PlacementTarget = this,
+            Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint
+        };
+        menu.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, "WindowSurfaceBrush");
+        menu.SetResourceReference(System.Windows.Controls.Control.ForegroundProperty, "TextPrimaryBrush");
+
+        var resetItem = new System.Windows.Controls.MenuItem { Header = $"重置鼠标「{label}」磨损" };
+        resetItem.Click += (_, _) => ButtonResetRequested?.Invoke(kind);
+        menu.Items.Add(resetItem);
+
+        menu.IsOpen = true;
+        e.Handled = true;
+    }
+
+    private string? HitTestZone(Point point)
+    {
         if (_hitLeft.Contains(point))
         {
-            hit = "Left";
-        }
-        else if (_hitRight.Contains(point))
-        {
-            hit = "Right";
-        }
-        else if (_hitMiddle.Contains(point))
-        {
-            hit = "Middle";
-        }
-        else if (_hasSideButtons && (_hitSide1.Contains(point) || _hitSide2.Contains(point)))
-        {
-            hit = "Side";
+            return "Left";
         }
 
-        if (hit != null)
+        if (_hitRight.Contains(point))
         {
-            ButtonClicked?.Invoke(hit);
-            e.Handled = true;
+            return "Right";
         }
+
+        if (_hitMiddle.Contains(point))
+        {
+            return "Middle";
+        }
+
+        if (_hasSideButtons && (_hitSide1.Contains(point) || _hitSide2.Contains(point)))
+        {
+            return "Side";
+        }
+
+        return null;
     }
 
     /// <summary>

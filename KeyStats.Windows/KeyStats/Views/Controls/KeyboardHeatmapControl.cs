@@ -49,8 +49,8 @@ public class KeyboardHeatmapControl : FrameworkElement
     private bool _lifespanMode;
     private long _ratedPerKey = 1;
 
-    /// <summary>寿命模式下点中某个键时触发（参数为键 id，如 "Space"）。</summary>
-    public event Action<string>? KeyClicked;
+    /// <summary>寿命模式下右键某个键 → 菜单确认后触发，参数为键 id（如 "Space"）。</summary>
+    public event Action<string>? KeyResetRequested;
 
     public KeyboardHeatmapControl()
     {
@@ -60,32 +60,55 @@ public class KeyboardHeatmapControl : FrameworkElement
         Unloaded += OnUnloaded;
     }
 
-    protected override void OnMouseLeftButtonDown(System.Windows.Input.MouseButtonEventArgs e)
+    protected override void OnMouseRightButtonDown(System.Windows.Input.MouseButtonEventArgs e)
     {
-        base.OnMouseLeftButtonDown(e);
+        base.OnMouseRightButtonDown(e);
 
-        // 只有寿命模式提供交互（普通热力图点击无意义）
+        // 只有寿命模式提供交互；左键不响应，避免误触重置
         if (!_lifespanMode)
         {
             return;
         }
 
-        var metrics = ComputeRenderMetrics();
-        if (metrics == null)
+        var keyId = HitTestKey(e.GetPosition(this));
+        if (keyId == null)
         {
             return;
         }
 
-        var point = e.GetPosition(this);
+        var menu = new System.Windows.Controls.ContextMenu
+        {
+            PlacementTarget = this,
+            Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint
+        };
+        menu.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, "WindowSurfaceBrush");
+        menu.SetResourceReference(System.Windows.Controls.Control.ForegroundProperty, "TextPrimaryBrush");
+
+        var resetItem = new System.Windows.Controls.MenuItem { Header = $"重置「{keyId}」磨损" };
+        resetItem.Click += (_, _) => KeyResetRequested?.Invoke(keyId);
+        menu.Items.Add(resetItem);
+
+        menu.IsOpen = true;
+        e.Handled = true;
+    }
+
+    private string? HitTestKey(Point point)
+    {
+        var metrics = ComputeRenderMetrics();
+        if (metrics == null)
+        {
+            return null;
+        }
+
         foreach (var key in Layout)
         {
             if (KeyFrame(key, metrics).Contains(point))
             {
-                KeyClicked?.Invoke(key.Id);
-                e.Handled = true;
-                return;
+                return key.Id;
             }
         }
+
+        return null;
     }
 
     public void Apply(IDictionary<string, int>? keyCounts)
