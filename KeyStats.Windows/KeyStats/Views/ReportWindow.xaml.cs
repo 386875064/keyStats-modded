@@ -150,9 +150,6 @@ public partial class ReportWindow : Window
 
         // 今日 24 小时分布
         RefreshHourly();
-
-        // 备份状态（云端 Supabase，失败会自动降级本地）
-        BackupHintText.Text = "备份：" + BackupService.LastStatus + "（云端 Supabase · 坑货雷达项目）";
     }
 
     private void RefreshHourly()

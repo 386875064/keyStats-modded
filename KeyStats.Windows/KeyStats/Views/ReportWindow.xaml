@@ -156,8 +156,5 @@
             </StackPanel>
         </Border>
 
-        <!-- 备份提示 -->
-        <TextBlock x:Name="BackupHintText" Grid.Row="5" Text="—" FontSize="10" VerticalAlignment="Bottom"
-                   TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"/>
     </Grid>
 </Window>

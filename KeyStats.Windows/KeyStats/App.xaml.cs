@@ -196,7 +196,6 @@ public partial class App : System.Windows.Application
             Console.WriteLine("Initializing services...");
             // Initialize services
             var statsManager = StatsManager.Instance;
-            BackupService.ScheduleOnStartup();
             StartupManager.Instance.SyncWithSettings();
             _appVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "0.0.0";
             SyncServiceConfiguration.TryCreateBaseUri(out var syncServiceUri);
