@@ -194,12 +194,15 @@ jobs:
   # ============================================================
   create-release:
     needs: [build-macos, build-windows]
+    # Windows 构建成功就发版；macOS job 在本 fork 里常因 runner 环境失败，不阻塞发布
+    if: always() && needs.build-windows.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
       - name: Download macOS artifact
+        if: needs.build-macos.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: macos-dmg
@@ -213,12 +216,13 @@ jobs:
 
       - name: List artifacts
         run: |
-          ls -la release-assets/macos
+          ls -la release-assets/macos || true
           ls -la release-assets/windows
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
+          fail_on_unmatched_files: false
           files: |
             release-assets/macos/KeyStats.dmg
             release-assets/macos/KeyStats.zip
