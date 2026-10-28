@@ -151,21 +151,8 @@ public partial class ReportWindow : Window
         // 今日 24 小时分布
         RefreshHourly();
 
-        // 备份状态
-        try
-        {
-            var folder = BackupService.BackupFolder;
-            var backups = Directory.Exists(folder)
-                ? Directory.GetFiles(folder, "KeyStats-backup-*.zip").OrderByDescending(p => p).ToList()
-                : new List<string>();
-            BackupHintText.Text = backups.Count == 0
-                ? $"自动备份：尚未生成（目录 {folder}）"
-                : $"自动备份：已保留 {backups.Count} 份，最近一份 {Path.GetFileNameWithoutExtension(backups[0]).Replace("KeyStats-backup-", string.Empty)}（{folder}）";
-        }
-        catch
-        {
-            BackupHintText.Text = "自动备份：状态未知";
-        }
+        // 备份状态（云端 Supabase，失败会自动降级本地）
+        BackupHintText.Text = "备份：" + BackupService.LastStatus + "（云端 Supabase · 坑货雷达项目）";
     }
 
     private void RefreshHourly()
@@ -218,10 +205,11 @@ public partial class ReportWindow : Window
         }
 
         var chars = keys / KeysPerCharacter;
-        var fingers = keys * 0.02 / 1000.0; // 每次按键指尖约移动 2cm
+        // 依据：一次按键（按下+复位）手指平均位移按 2 cm 估算，只统计键盘、不含鼠标
+        var fingers = keys * 0.02 / 1000.0;
         var text = AnalogizeCharacters(chars);
         return fingers >= 1
-            ? $"{text}；手指累计移动约 {fingers:F1} 公里"
+            ? $"{text}；手指累计移动约 {fingers:F1} 公里（按每次按键约 2 cm 估算）"
             : text;
     }
 
@@ -232,28 +220,40 @@ public partial class ReportWindow : Window
         return AnalogizeCharacters(chars);
     }
 
+    /// <summary>把字数折成具体作品（选的都是好认的，字数取常见版本的大约值）。</summary>
     private static string AnalogizeCharacters(double chars)
     {
-        // 参照：红楼梦约 73 万字、三体三部曲约 88 万字
-        if (chars >= 730_000 * 4)
+        if (chars >= 5_300_000)
         {
-            return $"相当于把《红楼梦》抄了 {chars / 730_000:F1} 遍（约 {FormatChars(chars)} 字）";
+            return $"相当于写完一部《斗破苍穹》（约 530 万字）";
+        }
+        if (chars >= 1_040_000)
+        {
+            return $"相当于写完《平凡的世界》（约 104 万字）";
         }
         if (chars >= 880_000)
         {
-            return $"相当于写完了《三体》三部曲（约 88 万字）";
+            return $"相当于写完《三体》三部曲（约 88 万字）";
         }
         if (chars >= 730_000)
         {
-            return $"相当于完整抄了一遍《红楼梦》（73 万字）";
+            return $"相当于完整抄一遍《红楼梦》（约 73 万字）";
+        }
+        if (chars >= 500_000)
+        {
+            return $"相当于写完《白鹿原》（约 50 万字）";
         }
         if (chars >= 300_000)
         {
-            return $"相当于写完了一部长篇小说（约 {FormatChars(chars)} 字）";
+            return $"相当于写完《三体》第一部（约 30 万字）";
         }
-        if (chars >= 100_000)
+        if (chars >= 250_000)
         {
-            return $"相当于写完了一部中篇小说（约 {FormatChars(chars)} 字）";
+            return $"相当于写完《围城》（约 25 万字）";
+        }
+        if (chars >= 120_000)
+        {
+            return $"相当于写完《活着》（约 12 万字）";
         }
         if (chars >= 30_000)
         {
