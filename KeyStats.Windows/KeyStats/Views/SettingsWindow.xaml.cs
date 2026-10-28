@@ -35,11 +35,6 @@ public partial class SettingsWindow : Window
         UpdateMaximumHeight();
         ApplyWindowBackdrop();
         LoadFloatingStatsControls();
-        if (App.CurrentApp?.SyncCoordinator != null)
-        {
-            App.CurrentApp.SyncCoordinator.StatusChanged += OnSyncStatusChanged;
-        }
-        RefreshSyncStatus();
         App.CurrentApp?.TrackPageView("settings");
     }
 
@@ -47,10 +42,6 @@ public partial class SettingsWindow : Window
     {
         ThemeManager.Instance.ThemeChanged -= OnThemeChanged;
         LocationChanged -= OnLocationChanged;
-        if (App.CurrentApp?.SyncCoordinator != null)
-        {
-            App.CurrentApp.SyncCoordinator.StatusChanged -= OnSyncStatusChanged;
-        }
     }
 
     private void OnThemeChanged()
@@ -114,56 +105,8 @@ public partial class SettingsWindow : Window
         App.CurrentApp?.ImportData();
     }
 
-    private void SyncSettings_Click(object sender, RoutedEventArgs e)
-    {
-        App.CurrentApp?.TrackClick("open_sync_settings");
-        App.CurrentApp?.ShowSyncSettingsWindow();
-    }
 
-    private void OnSyncStatusChanged()
-    {
-        Dispatcher.BeginInvoke(new System.Action(RefreshSyncStatus));
-    }
 
-    private void RefreshSyncStatus()
-    {
-        var status = App.CurrentApp?.SyncCoordinator?.GetStatus();
-        if (status == null)
-        {
-            SyncStatusTextBlock.Text = KeyStats.Properties.Strings.Settings_SyncUnavailable;
-            ImportDataButton.IsEnabled = true;
-            return;
-        }
-
-        if (!status.IsServiceConfigured)
-        {
-            SyncStatusTextBlock.Text = KeyStats.Properties.Strings.Settings_SyncUnavailable;
-            ImportDataButton.IsEnabled = !status.BlocksImport;
-            ImportDataButton.ToolTip = status.BlocksImport
-                ? KeyStats.Properties.Strings.Error_ImportDisabledWhileSyncing
-                : null;
-            return;
-        }
-
-        SyncStatusTextBlock.Text = status.NeedsRepair
-            ? KeyStats.Properties.Strings.Sync_RepairRequired
-            : status.SyncTotalDays.HasValue
-            ? status.SyncTotalDays.Value > 0
-                ? string.Format(
-                    KeyStats.Properties.Strings.Sync_ProgressFormat,
-                    status.SyncCompletedDays.GetValueOrDefault(),
-                    status.SyncTotalDays.Value)
-                : KeyStats.Properties.Strings.Sync_InProgressStatus
-            : status.IsEnabled
-            ? (status.ActiveDeviceCount < 2
-                ? KeyStats.Properties.Strings.Sync_SingleDeviceStatus
-                : string.Format(KeyStats.Properties.Strings.Sync_DeviceCountFormat, status.ActiveDeviceCount))
-            : KeyStats.Properties.Strings.Settings_SyncDesc;
-        ImportDataButton.IsEnabled = !status.BlocksImport;
-        ImportDataButton.ToolTip = status.BlocksImport
-            ? KeyStats.Properties.Strings.Error_ImportDisabledWhileSyncing
-            : null;
-    }
 
     private void ExportData_Click(object sender, RoutedEventArgs e)
     {

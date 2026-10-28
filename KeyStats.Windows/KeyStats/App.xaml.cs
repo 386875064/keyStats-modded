@@ -316,6 +316,15 @@ public partial class App : System.Windows.Application
         };
         menu.Items.Add(keyHistoryItem);
 
+        // 设备寿命是常用入口，直接放托盘菜单（不必再进设置）
+        var deviceLifespanItem = new System.Windows.Controls.MenuItem { Header = "设备寿命" };
+        deviceLifespanItem.Click += (s, e) =>
+        {
+            TrackClick("context_menu_device_lifespan");
+            ShowDeviceLifespanWindow();
+        };
+        menu.Items.Add(deviceLifespanItem);
+
         menu.Items.Add(new System.Windows.Controls.Separator());
 
         var quitItem = new System.Windows.Controls.MenuItem { Header = KeyStats.Properties.Strings.Tray_Quit };
