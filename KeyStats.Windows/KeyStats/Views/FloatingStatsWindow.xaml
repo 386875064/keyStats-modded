@@ -5,6 +5,7 @@
         Title="{x:Static p:Strings.FloatingStats_WindowTitle}"
         Width="35"
         Height="41"
+        SizeToContent="Width"
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"
@@ -26,9 +27,9 @@
         <Grid>
             <Grid x:Name="SingleRowLayout" Margin="2,1" Visibility="Collapsed">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="3"/>
-                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
                 <TextBlock x:Name="SinglePrimaryValueTextBlock"

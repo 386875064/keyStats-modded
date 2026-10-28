@@ -47,6 +47,10 @@ public class DailyStats
     [JsonPropertyName("appStats")]
     public Dictionary<string, AppStats> AppStats { get; set; } = new();
 
+    /// <summary>按小时的按键次数（0-23 点；旧数据没有该字段，视为全 0）。</summary>
+    [JsonPropertyName("hourlyKeyPresses")]
+    public Dictionary<int, int> HourlyKeyPresses { get; set; } = new();
+
     [JsonIgnore]
     public int TotalClicks => LeftClicks + RightClicks + MiddleClicks + SideBackClicks + SideForwardClicks;
 

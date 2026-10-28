@@ -114,6 +114,7 @@ public partial class App : System.Windows.Application
     private NotificationSettingsWindow? _notificationSettingsWindow;
     private MouseCalibrationWindow? _mouseCalibrationWindow;
     private DeviceLifespanWindow? _deviceLifespanWindow;
+    private ReportWindow? _reportWindow;
     private InputDiagnosticsWindow? _inputDiagnosticsWindow;
     private GameSessionsWindow? _gameSessionsWindow;
     private AppStatsWindow? _appStatsWindow;
@@ -185,6 +186,7 @@ public partial class App : System.Windows.Application
             }
             _singleInstanceMutex = mutex;
 
+
             EnsureStartMenuShortcut();
 
             Console.WriteLine("Applying theme...");
@@ -194,6 +196,7 @@ public partial class App : System.Windows.Application
             Console.WriteLine("Initializing services...");
             // Initialize services
             var statsManager = StatsManager.Instance;
+            BackupService.ScheduleOnStartup();
             StartupManager.Instance.SyncWithSettings();
             _appVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "0.0.0";
             SyncServiceConfiguration.TryCreateBaseUri(out var syncServiceUri);
@@ -244,6 +247,7 @@ public partial class App : System.Windows.Application
             Shutdown();
         }
     }
+
 
 
     private System.Windows.Controls.ContextMenu CreateContextMenu()
@@ -325,6 +329,14 @@ public partial class App : System.Windows.Application
         };
         menu.Items.Add(deviceLifespanItem);
 
+        var reportItem = new System.Windows.Controls.MenuItem { Header = "统计报告" };
+        reportItem.Click += (s, e) =>
+        {
+            TrackClick("context_menu_report");
+            ShowReportWindow();
+        };
+        menu.Items.Add(reportItem);
+
         menu.Items.Add(new System.Windows.Controls.Separator());
 
         var quitItem = new System.Windows.Controls.MenuItem { Header = KeyStats.Properties.Strings.Tray_Quit };
@@ -377,6 +389,20 @@ public partial class App : System.Windows.Application
         _deviceLifespanWindow.Closed += (_, _) => _deviceLifespanWindow = null;
         _deviceLifespanWindow.Show();
         _deviceLifespanWindow.Activate();
+    }
+
+    public void ShowReportWindow()
+    {
+        if (_reportWindow != null && _reportWindow.IsVisible)
+        {
+            _reportWindow.Activate();
+            return;
+        }
+
+        _reportWindow = new ReportWindow();
+        _reportWindow.Closed += (_, _) => _reportWindow = null;
+        _reportWindow.Show();
+        _reportWindow.Activate();
     }
 
     public void ShowInputDiagnosticsWindow()

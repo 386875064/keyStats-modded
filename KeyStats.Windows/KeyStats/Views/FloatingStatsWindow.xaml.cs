@@ -235,11 +235,12 @@ public partial class FloatingStatsWindow : Window
         var baseHeight = useDoubleRow ? DoubleRowHeight : SingleRowHeight;
         var targetWidth = Math.Round(baseWidth * layoutScale, MidpointRounding.AwayFromZero);
         var targetHeight = Math.Round(baseHeight * layoutScale, MidpointRounding.AwayFromZero);
-        var sizeChanged = !Width.Equals(targetWidth) || !Height.Equals(targetHeight);
+        var sizeChanged = !MinWidth.Equals(targetWidth) || !Height.Equals(targetHeight);
 
         SingleRowLayout.Visibility = useDoubleRow ? Visibility.Collapsed : Visibility.Visible;
         DoubleRowLayout.Visibility = useDoubleRow ? Visibility.Visible : Visibility.Collapsed;
-        Width = targetWidth;
+        // 宽度交给 SizeToContent 自适应（数字长了自动变宽，不再截断），这里只保证最小宽度
+        MinWidth = targetWidth;
         Height = targetHeight;
         return sizeChanged;
     }

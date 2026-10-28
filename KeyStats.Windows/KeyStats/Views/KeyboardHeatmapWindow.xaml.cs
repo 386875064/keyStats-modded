@@ -43,6 +43,16 @@ public partial class KeyboardHeatmapWindow : Window
         ThemeManager.Instance.ThemeChanged += OnThemeChanged;
     }
 
+    private sealed class AppFilterOption
+    {
+        public string? AppName { get; set; }
+        public string DisplayName { get; set; } = string.Empty;
+        public override string ToString() => DisplayName;
+    }
+
+    private string? _appFilterAppName;
+    private bool _isUpdatingAppFilter;
+
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         ApplyWindowBackdrop();
@@ -129,23 +139,65 @@ public partial class KeyboardHeatmapWindow : Window
         _selectedDate = ClampDate(_selectedDate);
 
         var dayData = manager.GetKeyboardHeatmapDay(_selectedDate);
-        var visibleCounts = dayData.KeyCounts
+        UpdateAppFilterItems();
+
+        var filtered = !string.IsNullOrEmpty(_appFilterAppName);
+        var sourceCounts = filtered
+            ? manager.GetDayAppKeyCounts(_selectedDate, _appFilterAppName!)
+            : dayData.KeyCounts;
+        var visibleCounts = sourceCounts
             .Where(kvp => KeyboardHeatmapControl.SupportedKeyIds.Contains(kvp.Key))
             .ToDictionary(kvp => kvp.Key, kvp => kvp.Value, StringComparer.Ordinal);
         KeyboardHeatmapView.Apply(visibleCounts);
 
         var activeKeys = visibleCounts.Values.Count(value => value > 0);
-        var totalFormatted = dayData.TotalKeyPresses.ToString("N0", CultureInfo.CurrentCulture);
+        var totalKeyPresses = filtered ? visibleCounts.Values.Sum() : dayData.TotalKeyPresses;
+        var totalFormatted = totalKeyPresses.ToString("N0", CultureInfo.CurrentCulture);
         var activeFormatted = activeKeys.ToString("N0", CultureInfo.CurrentCulture);
         SummaryText.Text = string.Format(CultureInfo.CurrentCulture, KeyStats.Properties.Strings.Heatmap_SummaryFormat, totalFormatted, activeFormatted);
         DateText.Text = DisplayDateString(_selectedDate);
 
-        var hasActivity = dayData.TotalKeyPresses > 0;
+        var hasActivity = totalKeyPresses > 0;
+        EmptyBadgeText.Text = filtered
+            ? "该应用当天没有逐键数据（逐键记录从 2026-10-28 起）"
+            : KeyStats.Properties.Strings.Heatmap_NoData;
         EmptyOverlay.Visibility = hasActivity ? Visibility.Collapsed : Visibility.Visible;
         EmptyBadge.Visibility = hasActivity ? Visibility.Collapsed : Visibility.Visible;
 
         UpdateNavigationState();
         UpdateDatePickerState();
+    }
+
+    private void UpdateAppFilterItems()
+    {
+        var apps = StatsManager.Instance.GetAppNamesForDay(_selectedDate);
+        var items = new List<AppFilterOption> { new() { AppName = null, DisplayName = "全部应用" } };
+        items.AddRange(apps.Select(app => new AppFilterOption
+        {
+            AppName = app.AppName,
+            DisplayName = string.IsNullOrWhiteSpace(app.DisplayName) ? app.AppName : app.DisplayName
+        }));
+
+        _isUpdatingAppFilter = true;
+        AppFilterComboBox.ItemsSource = items;
+        var selected = items.FirstOrDefault(item => item.AppName == _appFilterAppName) ?? items[0];
+        AppFilterComboBox.SelectedItem = selected;
+        _appFilterAppName = selected.AppName;
+        _isUpdatingAppFilter = false;
+    }
+
+    private void AppFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_isUpdatingAppFilter)
+        {
+            return;
+        }
+
+        if (AppFilterComboBox.SelectedItem is AppFilterOption option)
+        {
+            _appFilterAppName = option.AppName;
+            RefreshData();
+        }
     }
 
     private string DisplayDateString(DateTime date)

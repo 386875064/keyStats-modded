@@ -156,6 +156,7 @@
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
@@ -204,8 +205,17 @@
                     Click="BackToToday_Click"
                     Visibility="Collapsed"/>
 
+            <ComboBox x:Name="AppFilterComboBox"
+                      Grid.Column="3"
+                      MinWidth="150"
+                      Height="28"
+                      Margin="12,0,12,0"
+                      VerticalAlignment="Center"
+                      SelectionChanged="AppFilter_SelectionChanged"
+                      ToolTip="按应用过滤该天的键位分布（逐键数据从 2026-10-28 起记录）"/>
+
             <TextBlock x:Name="SummaryText"
-                       Grid.Column="3"
+                       Grid.Column="4"
                        VerticalAlignment="Center"
                        HorizontalAlignment="Right"
                        FontSize="12"

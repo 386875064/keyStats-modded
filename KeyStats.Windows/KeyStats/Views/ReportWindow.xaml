@@ -1,0 +1,163 @@
+<Window x:Class="KeyStats.Views.ReportWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="统计报告"
+        Width="560" Height="740"
+        MinWidth="480" MinHeight="560"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource WindowSurfaceBrush}"
+        ShowInTaskbar="False">
+
+    <Grid Margin="22,18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- 标题 + 周期切换 -->
+        <Grid Grid.Row="0">
+            <TextBlock Text="统计报告" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"
+                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="ThisWeekButton" Content="本周" Click="Range_Click" Tag="week"
+                        Style="{DynamicResource GhostButton}" MinWidth="56" Margin="0,0,6,0"/>
+                <Button x:Name="LastWeekButton" Content="上周" Click="Range_Click" Tag="lastweek"
+                        Style="{DynamicResource GhostButton}" MinWidth="56" Margin="0,0,6,0"/>
+                <Button x:Name="MonthButton" Content="本月" Click="Range_Click" Tag="month"
+                        Style="{DynamicResource GhostButton}" MinWidth="56"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- 成就卡：搜狗式类比 -->
+        <Border Grid.Row="1" Style="{DynamicResource CardBorder}" Margin="0,14,0,10" Padding="16,14">
+            <StackPanel>
+                <TextBlock x:Name="RangeText" Text="本周" FontSize="11"
+                           Foreground="{DynamicResource TextSecondaryBrush}"/>
+                <TextBlock x:Name="RangeKeysText" Text="0" FontSize="34" FontWeight="SemiBold" Margin="0,2,0,0"
+                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                <TextBlock x:Name="AnalogyText" Text="—" FontSize="13" Margin="0,6,0,0" TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                <TextBlock x:Name="LifetimeAnalogyText" Text="—" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextSecondaryBrush}"/>
+            </StackPanel>
+        </Border>
+
+        <!-- 汇总卡 -->
+        <Border Grid.Row="2" Style="{DynamicResource CardBorder}" Margin="0,0,0,10" Padding="14,12">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Row="0" Grid.Column="0">
+                    <TextBlock Text="按键" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                    <TextBlock x:Name="KeysText" Text="0" FontSize="17" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                </StackPanel>
+                <StackPanel Grid.Row="0" Grid.Column="1">
+                    <TextBlock Text="点击" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                    <TextBlock x:Name="ClicksText" Text="0" FontSize="17" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                </StackPanel>
+                <StackPanel Grid.Row="0" Grid.Column="2">
+                    <TextBlock Text="日均按键" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                    <TextBlock x:Name="DailyAvgText" Text="0" FontSize="17" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                </StackPanel>
+
+                <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,10,0,0">
+                    <TextBlock Text="活跃天数" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                    <TextBlock x:Name="ActiveDaysText" Text="0" FontSize="17" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                </StackPanel>
+                <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,10,0,0">
+                    <TextBlock Text="峰值日" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                    <TextBlock x:Name="PeakDayText" Text="—" FontSize="17" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                </StackPanel>
+                <StackPanel Grid.Row="1" Grid.Column="2" Margin="0,10,0,0">
+                    <TextBlock Text="较上一周期" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                    <TextBlock x:Name="CompareText" Text="—" FontSize="17" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- 最常用键 -->
+        <Border Grid.Row="3" Style="{DynamicResource CardBorder}" Margin="0,0,0,10" Padding="14,12">
+            <StackPanel>
+                <TextBlock Text="最常用的键" FontSize="13" FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                <ItemsControl x:Name="TopKeysList" Margin="0,8,0,0">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="46"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding Key}" FontSize="12"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                <Grid Grid.Column="1" Height="10" VerticalAlignment="Center" Margin="6,0,8,0">
+                                    <Border Background="{DynamicResource DividerBrush}" CornerRadius="5"/>
+                                    <Border Background="{DynamicResource AccentBrush}" CornerRadius="5"
+                                            HorizontalAlignment="Left" Width="{Binding BarWidth}"/>
+                                </Grid>
+                                <TextBlock Grid.Column="2" Text="{Binding CountText}" FontSize="12"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock x:Name="TopKeysEmptyText" Text="本期没有按键数据" FontSize="11" Margin="0,6,0,0"
+                           Visibility="Collapsed" Foreground="{DynamicResource TextSecondaryBrush}"/>
+            </StackPanel>
+        </Border>
+
+        <!-- 今日 24 小时分布 -->
+        <Border Grid.Row="4" Style="{DynamicResource CardBorder}" Margin="0,0,0,10" Padding="14,12">
+            <StackPanel>
+                <TextBlock Text="今日时段分布" FontSize="13" FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                <ItemsControl x:Name="HourlyList" Height="86" Margin="0,6,0,0">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <UniformGrid Rows="1"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Border Grid.Row="0" Background="{DynamicResource AccentBrush}" CornerRadius="2"
+                                        Width="10" Height="{Binding BarHeight}" VerticalAlignment="Bottom"/>
+                                <TextBlock Grid.Row="1" Text="{Binding Label}" FontSize="8" HorizontalAlignment="Center"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock x:Name="HourlyHintText" Text="小时数据从 2026-10-28 起记录" FontSize="10" Margin="0,4,0,0"
+                           Foreground="{DynamicResource TextSecondaryBrush}"/>
+            </StackPanel>
+        </Border>
+
+        <!-- 备份提示 -->
+        <TextBlock x:Name="BackupHintText" Grid.Row="5" Text="—" FontSize="10" VerticalAlignment="Bottom"
+                   TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"/>
+    </Grid>
+</Window>

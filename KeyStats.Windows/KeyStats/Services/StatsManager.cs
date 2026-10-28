@@ -220,8 +220,13 @@ public class StatsManager : IDisposable
                     CurrentStats.KeyPressCounts[keyName] = 0;
                 }
                 CurrentStats.KeyPressCounts[keyName]++;
+
+                // 按小时累计（小时趋势用；旧数据没有该字段，只看新数据）
+                var hour = DateTime.Now.Hour;
+                CurrentStats.HourlyKeyPresses[hour] =
+                    (CurrentStats.HourlyKeyPresses.TryGetValue(hour, out var hourCount) ? hourCount : 0) + 1;
             }
-            UpdateAppStats(appName, displayName, stats => stats.RecordKeyPress());
+            UpdateAppStats(appName, displayName, stats => stats.RecordKeyPress(keyName));
         }
 
         RecordKeyForPeakKPS();
@@ -1443,17 +1448,18 @@ public class StatsManager : IDisposable
     /// <summary>
     /// 本地累计逐键次数（历史 + 今天），键名与 KeyboardHeatmapControl 布局一致。
     /// 用于设备寿命面板的逐键磨损着色。
+    /// appFilter 非空时只汇总该应用内的逐键数据（2026-10-28 起记录，旧数据为空）。
     /// </summary>
-    public Dictionary<string, int> GetLifetimeKeyCounts()
+    public Dictionary<string, int> GetLifetimeKeyCounts(string? appFilter = null)
     {
         lock (_lock)
         {
             var merged = new Dictionary<string, int>(StringComparer.Ordinal);
             var currentKey = CurrentStats.Date.ToString("yyyy-MM-dd");
 
-            void Merge(DailyStats daily)
+            void MergeSource(IDictionary<string, int> counts)
             {
-                foreach (var kvp in daily.KeyPressCounts)
+                foreach (var kvp in counts)
                 {
                     var count = Math.Max(0, kvp.Value);
                     if (count <= 0)
@@ -1461,6 +1467,20 @@ public class StatsManager : IDisposable
                         continue;
                     }
                     merged[kvp.Key] = SafeAdd(merged.TryGetValue(kvp.Key, out var existing) ? existing : 0, count);
+                }
+            }
+
+            void Merge(DailyStats daily)
+            {
+                if (string.IsNullOrEmpty(appFilter))
+                {
+                    MergeSource(daily.KeyPressCounts);
+                    return;
+                }
+
+                if (daily.AppStats.TryGetValue(appFilter, out var app))
+                {
+                    MergeSource(app.KeyPressCounts);
                 }
             }
 
@@ -1474,6 +1494,133 @@ public class StatsManager : IDisposable
             Merge(CurrentStats);
 
             return AggregateKeyboardHeatmapCounts(merged);
+        }
+    }
+
+    /// <summary>累计出现过的应用（按累计按键降序），供热力图的应用过滤下拉使用。</summary>
+    public List<(string AppName, string DisplayName, long KeyPresses)> GetLifetimeAppNames()
+    {
+        lock (_lock)
+        {
+            var merged = new Dictionary<string, (string DisplayName, long KeyPresses)>(StringComparer.Ordinal);
+            var currentKey = CurrentStats.Date.ToString("yyyy-MM-dd");
+
+            void Merge(DailyStats daily)
+            {
+                foreach (var pair in daily.AppStats)
+                {
+                    var app = pair.Value;
+                    if (string.IsNullOrWhiteSpace(app.AppName))
+                    {
+                        continue;
+                    }
+
+                    var display = string.IsNullOrWhiteSpace(app.DisplayName) ? app.AppName : app.DisplayName;
+                    if (merged.TryGetValue(app.AppName, out var existing))
+                    {
+                        merged[app.AppName] = (existing.DisplayName, existing.KeyPresses + Math.Max(0, app.KeyPresses));
+                    }
+                    else
+                    {
+                        merged[app.AppName] = (display, Math.Max(0, app.KeyPresses));
+                    }
+                }
+            }
+
+            foreach (var pair in History)
+            {
+                if (!string.Equals(pair.Key, currentKey, StringComparison.Ordinal))
+                {
+                    Merge(pair.Value);
+                }
+            }
+            Merge(CurrentStats);
+
+            return merged
+                .Where(pair => pair.Value.KeyPresses > 0)
+                .OrderByDescending(pair => pair.Value.KeyPresses)
+                .Select(pair => (pair.Key, pair.Value.DisplayName, pair.Value.KeyPresses))
+                .ToList();
+        }
+    }
+
+    /// <summary>一段日期区间的汇总（周报/月报用）。</summary>
+    public sealed class PeriodSummary
+    {
+        public long KeyPresses { get; set; }
+        public long Clicks { get; set; }
+        public int ActiveDays { get; set; }
+        public Dictionary<string, int> TopKeys { get; set; } = new(StringComparer.Ordinal);
+        public DateTime? PeakDate { get; set; }
+        public int PeakKeys { get; set; }
+        public Dictionary<int, int> Hourly { get; set; } = new();
+    }
+
+    /// <summary>汇总 [start, end] 区间（含首尾）的按键/点击/逐键/小时分布。</summary>
+    public PeriodSummary GetPeriodSummary(DateTime start, DateTime end)
+    {
+        lock (_lock)
+        {
+            var summary = new PeriodSummary();
+            var from = start.Date;
+            var to = end.Date;
+            if (to < from)
+            {
+                (from, to) = (to, from);
+            }
+
+            for (var date = from; date <= to; date = date.AddDays(1))
+            {
+                var daily = GetLocalDailyStats(date);
+                var keys = Math.Max(0, daily.KeyPresses);
+                if (keys <= 0 && daily.TotalClicks <= 0)
+                {
+                    continue;
+                }
+
+                summary.ActiveDays++;
+                summary.KeyPresses += keys;
+                summary.Clicks += Math.Max(0, daily.TotalClicks);
+
+                if (keys > summary.PeakKeys)
+                {
+                    summary.PeakKeys = keys;
+                    summary.PeakDate = date;
+                }
+
+                foreach (var pair in daily.KeyPressCounts)
+                {
+                    var count = Math.Max(0, pair.Value);
+                    if (count <= 0)
+                    {
+                        continue;
+                    }
+                    summary.TopKeys[pair.Key] = SafeAdd(
+                        summary.TopKeys.TryGetValue(pair.Key, out var existing) ? existing : 0, count);
+                }
+
+                foreach (var pair in daily.HourlyKeyPresses)
+                {
+                    var count = Math.Max(0, pair.Value);
+                    if (count <= 0)
+                    {
+                        continue;
+                    }
+                    summary.Hourly[pair.Key] =
+                        (summary.Hourly.TryGetValue(pair.Key, out var existing) ? existing : 0) + count;
+                }
+            }
+
+            return summary;
+        }
+    }
+
+    /// <summary>今天的逐小时按键（小时趋势用）。</summary>
+    public Dictionary<int, int> GetTodayHourlyKeyPresses()
+    {
+        lock (_lock)
+        {
+            return new Dictionary<int, int>(CurrentStats.HourlyKeyPresses);
         }
     }
 
@@ -1617,10 +1764,52 @@ public class StatsManager : IDisposable
         }
     }
 
+    /// <summary>某天里有逐键数据的应用（热力图的应用筛选下拉用）。</summary>
+    public List<(string AppName, string DisplayName)> GetAppNamesForDay(DateTime date)
+    {
+        lock (_lock)
+        {
+            var daily = GetDailyStats(date.Date);
+            return daily.AppStats
+                .Where(pair => pair.Value.KeyPresses > 0 || pair.Value.KeyPressCounts.Count > 0)
+                .OrderByDescending(pair => pair.Value.KeyPresses)
+                .Select(pair => (
+                    pair.Key,
+                    string.IsNullOrWhiteSpace(pair.Value.DisplayName) ? pair.Key : pair.Value.DisplayName))
+                .ToList();
+        }
+    }
+
+    /// <summary>某天某应用的逐键次数（已聚合到热力图键名）；该应用没有逐键数据时返回空。</summary>
+    public Dictionary<string, int> GetDayAppKeyCounts(DateTime date, string appName)
+    {
+        lock (_lock)
+        {
+            var daily = GetDailyStats(date.Date);
+            if (!daily.AppStats.TryGetValue(appName, out var app) || app.KeyPressCounts.Count == 0)
+            {
+                return new Dictionary<string, int>(StringComparer.Ordinal);
+            }
+
+            var raw = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (var pair in app.KeyPressCounts)
+            {
+                var count = Math.Max(0, pair.Value);
+                if (count > 0)
+                {
+                    raw[pair.Key] = count;
+                }
+            }
+
+            return AggregateKeyboardHeatmapCounts(raw);
+        }
+    }
+
     private List<DateTime> GetAppStatsDates(AppStatsRange range)
     {
         var today = DateTime.Today;
         var dates = new List<DateTime>();
+
 
         if (range == AppStatsRange.All)
         {
