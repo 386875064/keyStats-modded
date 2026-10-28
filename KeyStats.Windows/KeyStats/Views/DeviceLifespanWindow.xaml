@@ -107,13 +107,22 @@
                         <TextBlock Text="磨损严重" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
                     </StackPanel>
                 </Grid>
-                <TextBlock Text="键帽颜色 = 该键已用次数占额定寿命的比例，角标为剩余百分比"
-                           FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,8"/>
+                <TextBlock Text="键帽颜色 = 该键已用次数占额定寿命的比例，角标为剩余百分比；点击任意键可重置该键（换键后从 0 重算）"
+                           FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,8"
+                           TextWrapping="Wrap"/>
                 <Border Height="300">
                     <controls:KeyboardHeatmapControl x:Name="KeyboardLifespanView"/>
                 </Border>
-                <TextBlock x:Name="KeyboardWearSummary" FontSize="11" Margin="0,8,0,0"
-                           Foreground="{DynamicResource TextSecondaryBrush}"/>
+                <Grid Margin="0,8,0,0">
+                    <TextBlock x:Name="KeyboardWearSummary" FontSize="11" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                    <Button Content="重置全部键位" Click="ResetAll_Click" FontSize="11" Padding="8,2"
+                            HorizontalAlignment="Right" Cursor="Hand"
+                            Background="Transparent" BorderThickness="1"
+                            BorderBrush="{DynamicResource DividerBrush}"
+                            Foreground="{DynamicResource TextSecondaryBrush}"
+                            ToolTip="清除所有键位的重置基线，恢复按全量累计计算"/>
+                </Grid>
             </StackPanel>
         </Border>
 
@@ -122,7 +131,7 @@
             <StackPanel>
                 <TextBlock Text="鼠标 · 按键磨损" FontSize="13" FontWeight="SemiBold"
                            Foreground="{DynamicResource TextPrimaryBrush}"/>
-                <TextBlock Text="左 / 右键按所选微动寿命估算；中键与侧键通常沿用鼠标原装微动，固定按 500 万次估算"
+                <TextBlock Text="左 / 右键按所选微动寿命估算；中键与侧键通常沿用鼠标原装微动，固定按 500 万次估算；点击某个分区可重置该分区"
                            FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,8"
                            TextWrapping="Wrap"/>
                 <Border Height="190">

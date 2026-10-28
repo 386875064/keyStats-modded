@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace KeyStats.Models;
@@ -113,6 +114,14 @@ public class AppSettings
 
     [JsonPropertyName("mouseCustomRatedWan")]
     public long MouseCustomRatedWan { get; set; } = 2000;
+
+    // 按键寿命重置基线：键名 → 重置时的累计次数（换键后磨损从 0 重算，原始数据不动）
+    [JsonPropertyName("keyPressResetBaselines")]
+    public Dictionary<string, long> KeyPressResetBaselines { get; set; } = new();
+
+    // 鼠标分区重置基线：Left / Right / Middle / Side → 重置时的累计点击数
+    [JsonPropertyName("mouseClickResetBaselines")]
+    public Dictionary<string, long> MouseClickResetBaselines { get; set; } = new();
 
     [JsonPropertyName("languagePreference")]
     public string LanguagePreference { get; set; } = "system";  // "system" | "zh-Hans" | "zh-Hant" | "en"

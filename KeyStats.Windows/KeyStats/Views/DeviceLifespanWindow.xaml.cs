@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
@@ -24,6 +25,9 @@ public partial class DeviceLifespanWindow : Window
         Loaded += OnLoaded;
         Closed += OnClosed;
         ThemeManager.Instance.ThemeChanged += OnThemeChanged;
+
+        KeyboardLifespanView.KeyClicked += OnKeyClicked;
+        MouseLifespanView.ButtonClicked += OnMouseButtonClicked;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -135,9 +139,7 @@ public partial class DeviceLifespanWindow : Window
         // 键盘面板：额定是「单键寿命」口径 —— 主百分比用平均键位磨损，预估按最坏键
         if (keyboardRated > 0)
         {
-            var keyCounts = StatsManager.Instance.GetLifetimeKeyCounts()
-                .Where(kvp => kvp.Value > 0)
-                .ToDictionary(kvp => kvp.Key, kvp => (int)System.Math.Min(int.MaxValue, kvp.Value));
+            var keyCounts = GetAdjustedKeyCounts();
             KeyboardLifespanView.ApplyLifespan(keyCounts, keyboardRated);
 
             var worst = keyCounts.OrderByDescending(kvp => kvp.Value).FirstOrDefault();
@@ -157,7 +159,7 @@ public partial class DeviceLifespanWindow : Window
         // 鼠标面板：每颗微动独立额定 —— 主百分比用最坏微动（木桶）
         if (mouseRated > 0)
         {
-            var clicks = StatsManager.Instance.GetLifetimeClickBreakdown();
+            var clicks = GetAdjustedClicks();
             MouseLifespanView.Apply(
                 new MouseLifespanControl.ButtonWear(clicks.Left, mouseRated),
                 new MouseLifespanControl.ButtonWear(clicks.Right, mouseRated),
@@ -175,6 +177,132 @@ public partial class DeviceLifespanWindow : Window
                 new MouseLifespanControl.ButtonWear(0, 1));
             ApplyMouseSummary(0, default, 0);
         }
+    }
+
+    /// <summary>逐键次数扣除每个键的重置基线（换键后从 0 重算，原始数据不动）。</summary>
+    private static Dictionary<string, int> GetAdjustedKeyCounts()
+    {
+        var baselines = StatsManager.Instance.Settings.KeyPressResetBaselines;
+        var result = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var kvp in StatsManager.Instance.GetLifetimeKeyCounts())
+        {
+            var baseline = baselines.TryGetValue(kvp.Key, out var value) ? value : 0;
+            var adjusted = kvp.Value - baseline;
+            if (adjusted > 0)
+            {
+                result[kvp.Key] = (int)System.Math.Min(int.MaxValue, adjusted);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>鼠标各分区点击扣除重置基线。</summary>
+    private static (long Left, long Right, long Middle, long SideForward, long SideBack) GetAdjustedClicks()
+    {
+        var baselines = StatsManager.Instance.Settings.MouseClickResetBaselines;
+        var raw = StatsManager.Instance.GetLifetimeClickBreakdown();
+
+        long Adjust(string key, long value)
+        {
+            var baseline = baselines.TryGetValue(key, out var stored) ? stored : 0;
+            return System.Math.Max(0, value - baseline);
+        }
+
+        return (
+            Adjust("Left", raw.Left),
+            Adjust("Right", raw.Right),
+            Adjust("Middle", raw.Middle),
+            Adjust("Side", raw.SideForward),
+            Adjust("Side", raw.SideBack));
+    }
+
+    // ===== 寿命重置 =====
+
+    private void OnKeyClicked(string keyId)
+    {
+        var raw = StatsManager.Instance.GetLifetimeKeyCounts();
+        var used = raw.TryGetValue(keyId, out var value) ? value : 0;
+        if (used <= 0)
+        {
+            return;
+        }
+
+        var confirmed = MessageBox.Show(
+            this,
+            $"重置「{keyId}」的磨损？\n\n当前累计 {used:N0} 次将作为新基线，之后该键从 0 重算。\n原始统计数据不会删除，其它报表不受影响。",
+            "重置按键寿命",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Question);
+        if (confirmed != MessageBoxResult.OK)
+        {
+            return;
+        }
+
+        var settings = StatsManager.Instance.Settings;
+        settings.KeyPressResetBaselines[keyId] = used;
+        StatsManager.Instance.SaveSettings();
+        RefreshDisplay();
+    }
+
+    private void OnMouseButtonClicked(string kind)
+    {
+        var label = kind switch
+        {
+            "Left" => "左键",
+            "Right" => "右键",
+            "Middle" => "中键",
+            _ => "侧键"
+        };
+
+        var raw = StatsManager.Instance.GetLifetimeClickBreakdown();
+        var used = kind switch
+        {
+            "Left" => raw.Left,
+            "Right" => raw.Right,
+            "Middle" => raw.Middle,
+            _ => raw.SideForward + raw.SideBack
+        };
+        if (used <= 0)
+        {
+            return;
+        }
+
+        var confirmed = MessageBox.Show(
+            this,
+            $"重置鼠标「{label}」的磨损？\n\n当前累计 {used:N0} 次将作为新基线，之后从 0 重算。\n原始统计数据不会删除，其它报表不受影响。",
+            "重置鼠标按键寿命",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Question);
+        if (confirmed != MessageBoxResult.OK)
+        {
+            return;
+        }
+
+        var settings = StatsManager.Instance.Settings;
+        settings.MouseClickResetBaselines[kind] = used;
+        StatsManager.Instance.SaveSettings();
+        RefreshDisplay();
+    }
+
+    private void ResetAll_Click(object sender, RoutedEventArgs e)
+    {
+        var confirmed = MessageBox.Show(
+            this,
+            "清除所有重置基线，恢复按全量累计计算？\n\n（已经换过的键会重新显示旧键的累计磨损）",
+            "重置全部",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Warning);
+        if (confirmed != MessageBoxResult.OK)
+        {
+            return;
+        }
+
+        var settings = StatsManager.Instance.Settings;
+        settings.KeyPressResetBaselines.Clear();
+        settings.MouseClickResetBaselines.Clear();
+        StatsManager.Instance.SaveSettings();
+        RefreshDisplay();
     }
 
     private void ApplyKeyboardSummary(long ratedPerKey, Dictionary<string, int> keyCounts, int calendarDays)

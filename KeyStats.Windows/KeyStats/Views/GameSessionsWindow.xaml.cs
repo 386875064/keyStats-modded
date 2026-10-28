@@ -48,6 +48,13 @@ public partial class GameSessionsWindow : Window
     private void Refresh()
     {
         var sessions = GameSessionService.Instance.GetSessions();
+        foreach (var session in sessions)
+        {
+            session.IconPath = session.ChampionId > 0
+                ? GameSessionService.GetChampionIconPath(session.ChampionId)
+                : null;
+        }
+
         SessionsList.ItemsSource = sessions;
         EmptyHintText.Visibility = sessions.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
@@ -64,5 +71,14 @@ public partial class GameSessionsWindow : Window
         AverageApmText.Text = totalSeconds > 0
             ? (totalActions / (totalSeconds / 60.0)).ToString("F0")
             : "0";
+    }
+
+    private void SessionRow_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: Models.GameSessionRecord record })
+        {
+            var detail = new GameSessionDetailWindow(record) { Owner = this };
+            detail.ShowDialog();
+        }
     }
 }

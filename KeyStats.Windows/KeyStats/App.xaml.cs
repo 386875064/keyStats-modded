@@ -213,6 +213,7 @@ public partial class App : System.Windows.Application
             InputMonitorService.Instance.StartMonitoring();
             GameSessionService.Instance.Start();
 
+
             Console.WriteLine("Creating tray icon...");
             _trayIconViewModel = new TrayIconViewModel();
             _trayIconViewModel.PropertyChanged += OnTrayIconViewModelPropertyChanged;
@@ -243,6 +244,7 @@ public partial class App : System.Windows.Application
             Shutdown();
         }
     }
+
 
     private System.Windows.Controls.ContextMenu CreateContextMenu()
     {

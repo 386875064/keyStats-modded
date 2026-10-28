@@ -49,12 +49,43 @@ public class KeyboardHeatmapControl : FrameworkElement
     private bool _lifespanMode;
     private long _ratedPerKey = 1;
 
+    /// <summary>寿命模式下点中某个键时触发（参数为键 id，如 "Space"）。</summary>
+    public event Action<string>? KeyClicked;
+
     public KeyboardHeatmapControl()
     {
         SnapsToDevicePixels = true;
         UseLayoutRounding = true;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
+    }
+
+    protected override void OnMouseLeftButtonDown(System.Windows.Input.MouseButtonEventArgs e)
+    {
+        base.OnMouseLeftButtonDown(e);
+
+        // 只有寿命模式提供交互（普通热力图点击无意义）
+        if (!_lifespanMode)
+        {
+            return;
+        }
+
+        var metrics = ComputeRenderMetrics();
+        if (metrics == null)
+        {
+            return;
+        }
+
+        var point = e.GetPosition(this);
+        foreach (var key in Layout)
+        {
+            if (KeyFrame(key, metrics).Contains(point))
+            {
+                KeyClicked?.Invoke(key.Id);
+                e.Handled = true;
+                return;
+            }
+        }
     }
 
     public void Apply(IDictionary<string, int>? keyCounts)

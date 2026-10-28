@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Tasks;
 using KeyStats.Helpers;
 using KeyStats.Models;
 
@@ -19,6 +20,8 @@ public sealed class GameSessionService : IDisposable
     private const int PollIntervalMs = 5000;
     private const int MaxRecords = 200;
     private const double MinimumSessionSeconds = 30;
+    private const int ChampionResolveAttempts = 4;
+    private const int ChampionResolveIntervalMs = 15000;
 
     private static readonly string[] TrackedProcesses = { "League of Legends" };
     private const string GameId = "lol";
@@ -39,6 +42,17 @@ public sealed class GameSessionService : IDisposable
     private double _baseDistance;
     private double _baseScroll;
     private long _baseLeft, _baseRight, _baseMiddle, _baseSideBack, _baseSideForward;
+    private Dictionary<string, int> _baseKeyCounts = new(StringComparer.Ordinal);
+
+    // 选人阶段抓到的英雄（开局先记下，结算再覆盖）
+    private readonly LcuClient _lcuClient = new();
+    private int _pendingChampionId;
+    private string _pendingChampionName = string.Empty;
+    private DateTime _pendingChampionAtUtc = DateTime.MinValue;
+    private int _champSelectProbeBusy;
+    private DateTime _lastChampSelectProbeUtc = DateTime.MinValue;
+    private static readonly TimeSpan ChampSelectProbeInterval = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan PendingChampionMaxAge = TimeSpan.FromMinutes(15);
     private int _lastSampleMinute;
     private long _lastSampleKeys, _lastSampleClicks;
     private int _peakKpm, _peakCpm, _peakApm;
@@ -147,6 +161,12 @@ public sealed class GameSessionService : IDisposable
         {
             var processName = ScanForGame();
 
+            // 不在对局时顺便盯选人阶段，把「我选了谁」先记下来（对局中不额外请求）
+            if (processName == null)
+            {
+                TryProbeChampSelect();
+            }
+
             lock (_lock)
             {
                 if (processName != null && !_active)
@@ -187,6 +207,14 @@ public sealed class GameSessionService : IDisposable
         _baseMiddle = clicks.Middle;
         _baseSideBack = clicks.SideBack;
         _baseSideForward = clicks.SideForward;
+        _baseKeyCounts = StatsManager.Instance.GetLifetimeKeyCounts();
+
+        // 选人阶段抓到的英雄（超过 15 分钟视为上一次的残留，丢弃）
+        if (_pendingChampionId > 0 && DateTime.UtcNow - _pendingChampionAtUtc > PendingChampionMaxAge)
+        {
+            _pendingChampionId = 0;
+            _pendingChampionName = string.Empty;
+        }
         _lastSampleMinute = 0;
         _lastSampleKeys = 0;
         _lastSampleClicks = 0;
@@ -270,6 +298,9 @@ public sealed class GameSessionService : IDisposable
             PeakCpm = _peakCpm,
             PeakApm = _peakApm,
             CaptureChannel = InputMonitorService.Instance.CaptureChannel,
+            KeyPressCounts = BuildSessionKeyCounts(),
+            ChampionId = _pendingChampionId,
+            ChampionName = _pendingChampionName,
             Completed = true
         };
 
@@ -282,11 +313,124 @@ public sealed class GameSessionService : IDisposable
         Save();
         Debug.WriteLine($"Game session ended: {record.KeyPresses} keys, {record.TotalClicks} clicks, {record.DurationText}");
 
+        QueueChampionResolution(record);
+
         NotificationService.Instance.SendCustomNotification(
             "本局统计",
             $"{record.GameName} · {record.DurationText} · {record.KeyPresses:N0} 键 · APM {record.ApM:F0}");
 
         RaiseSessionsChanged();
+    }
+
+    /// <summary>本局逐键次数 = 当前累计（热力图聚合后）与开局快照的差。</summary>
+    private Dictionary<string, int> BuildSessionKeyCounts()
+    {
+        var current = StatsManager.Instance.GetLifetimeKeyCounts();
+        var result = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var kvp in current)
+        {
+            var baseline = _baseKeyCounts.TryGetValue(kvp.Key, out var value) ? value : 0;
+            var delta = kvp.Value - baseline;
+            if (delta > 0)
+            {
+                result[kvp.Key] = delta;
+            }
+        }
+        return result;
+    }
+
+    /// <summary>选人阶段的英雄探测（10 秒一次；不阻塞轮询线程）。</summary>
+    private void TryProbeChampSelect()
+    {
+        if (DateTime.UtcNow - _lastChampSelectProbeUtc < ChampSelectProbeInterval)
+        {
+            return;
+        }
+
+        if (Interlocked.CompareExchange(ref _champSelectProbeBusy, 1, 0) != 0)
+        {
+            return;
+        }
+
+        _lastChampSelectProbeUtc = DateTime.UtcNow;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var championId = await _lcuClient.TryGetChampSelectChampionIdAsync().ConfigureAwait(false);
+                if (championId <= 0 || championId == _pendingChampionId)
+                {
+                    return;
+                }
+
+                var name = await _lcuClient.TryGetChampionNameAsync(championId).ConfigureAwait(false);
+                _pendingChampionId = championId;
+                _pendingChampionName = name ?? string.Empty;
+                _pendingChampionAtUtc = DateTime.UtcNow;
+                Debug.WriteLine($"Champ select captured: {_pendingChampionName} ({championId})");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Champ select probe failed: {ex.Message}");
+            }
+            finally
+            {
+                Volatile.Write(ref _champSelectProbeBusy, 0);
+            }
+        });
+    }
+
+    /// <summary>英雄头像缓存路径（下载后离线可用）。</summary>
+    public static string GetChampionIconPath(int championId)
+    {
+        return Path.Combine(StatsManager.Instance.DataFolder, "champion-icons", $"{championId}.png");
+    }
+
+    /// <summary>
+    /// 结算后补录本局英雄：只在结算后短时尝试（最多 4 次、间隔 15 秒），
+    /// 抓到就覆盖选人阶段记下的英雄并下载官方头像；抓不到就保留选人阶段的记录，再没有就是「未知」。
+    /// </summary>
+    private void QueueChampionResolution(GameSessionRecord record)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                for (var attempt = 1; attempt <= ChampionResolveAttempts; attempt++)
+                {
+                    if (attempt > 1)
+                    {
+                        await Task.Delay(ChampionResolveIntervalMs).ConfigureAwait(false);
+                    }
+
+                    var (championId, championName) = await _lcuClient.ResolveLastGameChampionAsync().ConfigureAwait(false);
+                    if (championId <= 0)
+                    {
+                        continue;
+                    }
+
+                    await _lcuClient.TryDownloadChampionIconAsync(championId, GetChampionIconPath(championId))
+                        .ConfigureAwait(false);
+
+                    lock (_lock)
+                    {
+                        record.ChampionId = championId;
+                        record.ChampionName = championName ?? string.Empty;
+                        Save();
+                    }
+                    RaiseSessionsChanged();
+                    Debug.WriteLine($"Session champion resolved: {record.ChampionName} ({championId})");
+                    return;
+                }
+
+                Debug.WriteLine("Session champion unresolved, kept champ-select value");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Champion resolution failed: {ex.Message}");
+            }
+        });
     }
 
     private void RaiseSessionsChanged()
@@ -380,6 +524,7 @@ public sealed class GameSessionService : IDisposable
     public void Dispose()
     {
         Stop();
+        _lcuClient.Dispose();
         _instance = null;
     }
 }

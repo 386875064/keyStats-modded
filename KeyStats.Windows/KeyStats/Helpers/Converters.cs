@@ -86,3 +86,40 @@ public class BarWidthConverter : IMultiValueConverter
         throw new NotSupportedException();
     }
 }
+
+/// <summary>本地图片路径 → BitmapImage（OnLoad 载入后释放文件句柄，可被后续覆盖）。</summary>
+public class PathToImageConverter : IValueConverter
+{
+    public object? Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is not string path || string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            if (!System.IO.File.Exists(path))
+            {
+                return null;
+            }
+
+            var image = new System.Windows.Media.Imaging.BitmapImage();
+            image.BeginInit();
+            image.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+            image.UriSource = new Uri(path);
+            image.EndInit();
+            image.Freeze();
+            return image;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}

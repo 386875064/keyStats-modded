@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace KeyStats.Models;
@@ -68,6 +69,18 @@ public class GameSessionRecord
     [JsonPropertyName("completed")]
     public bool Completed { get; set; } = true;
 
+    /// <summary>本局英雄 ID（结算后由 LCU 补录，抓不到为 0）。</summary>
+    [JsonPropertyName("championId")]
+    public int ChampionId { get; set; }
+
+    /// <summary>本局英雄中文名（跟随客户端语言，抓不到为空）。</summary>
+    [JsonPropertyName("championName")]
+    public string ChampionName { get; set; } = string.Empty;
+
+    /// <summary>本局逐键次数（开局快照与结算差值的差，只保留 &gt;0 的键）；旧记录为 null。</summary>
+    [JsonPropertyName("keyPressCounts")]
+    public Dictionary<string, int>? KeyPressCounts { get; set; }
+
     [JsonIgnore]
     public long TotalClicks => LeftClicks + RightClicks + MiddleClicks + SideBackClicks + SideForwardClicks;
 
@@ -92,6 +105,13 @@ public class GameSessionRecord
     public string ChannelText => string.Equals(CaptureChannel, "Raw Input", StringComparison.OrdinalIgnoreCase)
         ? "Raw Input"
         : "钩子";
+
+    [JsonIgnore]
+    public string ChampionText => string.IsNullOrWhiteSpace(ChampionName) ? "未知英雄" : ChampionName;
+
+    /// <summary>英雄头像缓存路径（运行时由窗口填充，不入库）。</summary>
+    [JsonIgnore]
+    public string? IconPath { get; set; }
 
     [JsonIgnore]
     public string DateText => StartTime.LocalDateTime.ToString("MM-dd HH:mm");

@@ -32,12 +32,52 @@ public class MouseLifespanControl : FrameworkElement
     private ButtonWear _side = new(0, 1);
     private bool _hasSideButtons = true;
 
+    // 最近一次渲染的命中区域（供点击检测）
+    private Rect _hitLeft;
+    private Rect _hitRight;
+    private Rect _hitMiddle;
+    private Rect _hitSide1;
+    private Rect _hitSide2;
+
+    /// <summary>点击某个分区时触发，参数：Left / Right / Middle / Side。</summary>
+    public event Action<string>? ButtonClicked;
+
     public MouseLifespanControl()
     {
         SnapsToDevicePixels = true;
         UseLayoutRounding = true;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
+    }
+
+    protected override void OnMouseLeftButtonDown(System.Windows.Input.MouseButtonEventArgs e)
+    {
+        base.OnMouseLeftButtonDown(e);
+
+        var point = e.GetPosition(this);
+        string? hit = null;
+        if (_hitLeft.Contains(point))
+        {
+            hit = "Left";
+        }
+        else if (_hitRight.Contains(point))
+        {
+            hit = "Right";
+        }
+        else if (_hitMiddle.Contains(point))
+        {
+            hit = "Middle";
+        }
+        else if (_hasSideButtons && (_hitSide1.Contains(point) || _hitSide2.Contains(point)))
+        {
+            hit = "Side";
+        }
+
+        if (hit != null)
+        {
+            ButtonClicked?.Invoke(hit);
+            e.Handled = true;
+        }
     }
 
     /// <summary>
@@ -97,6 +137,11 @@ public class MouseLifespanControl : FrameworkElement
         var rightRect = new Rect(buttonArea.Left + buttonArea.Width / 2 + halfGap - 1, buttonArea.Top, leftRect.Width, buttonArea.Height);
         var buttonRadius = radius * 0.55;
 
+        // 记录命中区域（侧键在下方块里补充）
+        _hitLeft = leftRect;
+        _hitRight = rightRect;
+        _hitMiddle = wheelRect;
+
         // 左右键
         dc.DrawRoundedRectangle(Frozen(WearColor(_left, isDark)), null, leftRect, buttonRadius, buttonRadius);
         dc.DrawRoundedRectangle(Frozen(WearColor(_right, isDark)), null, rightRect, buttonRadius, buttonRadius);
@@ -121,14 +166,15 @@ public class MouseLifespanControl : FrameworkElement
             var sideY1 = body.Top + bodyHeight * 0.40;
             var sideY2 = sideY1 + sideHeight + 6;
             var sideBrush = Frozen(WearColor(_side, isDark));
-            dc.DrawRoundedRectangle(sideBrush, borderPen, new Rect(sideX, sideY1, sideWidth, sideHeight), 4, 4);
-            dc.DrawRoundedRectangle(sideBrush, borderPen, new Rect(sideX, sideY2, sideWidth, sideHeight), 4, 4);
+            _hitSide1 = new Rect(sideX, sideY1, sideWidth, sideHeight);
+            _hitSide2 = new Rect(sideX, sideY2, sideWidth, sideHeight);
+            dc.DrawRoundedRectangle(sideBrush, borderPen, _hitSide1, 4, 4);
+            dc.DrawRoundedRectangle(sideBrush, borderPen, _hitSide2, 4, 4);
         }
 
         // 键区内文字：剩余百分比
         DrawCenteredText(dc, PercentText(_left), leftRect, Math.Max(10, bodyWidth * 0.16), textPrimary, FontWeights.SemiBold);
         DrawCenteredText(dc, PercentText(_right), rightRect, Math.Max(10, bodyWidth * 0.16), textPrimary, FontWeights.SemiBold);
-
         // 右侧图例
         var legendX = body.Right + Math.Max(16, ActualWidth * 0.06);
         var legendWidth = ActualWidth - legendX - 8;
