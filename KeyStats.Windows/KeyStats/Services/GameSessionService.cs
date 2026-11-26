@@ -20,7 +20,7 @@ public sealed class GameSessionService : IDisposable
     private const int PollIntervalMs = 5000;
     private const int MaxRecords = 200;
     private const double MinimumSessionSeconds = 30;
-    private const int ChampionResolveAttempts = 4;
+    private const int ChampionResolveAttempts = 6;
     private const int ChampionResolveIntervalMs = 15000;
 
     private static readonly string[] TrackedProcesses = { "League of Legends" };
@@ -56,6 +56,8 @@ public sealed class GameSessionService : IDisposable
     private int _lastSampleMinute;
     private long _lastSampleKeys, _lastSampleClicks;
     private int _peakKpm, _peakCpm, _peakApm;
+    private int _reconcileBusy;
+    private DateTime _lastReconcileUtc = DateTime.MinValue;
 
     public event Action? SessionsChanged;
 
@@ -134,11 +136,139 @@ public sealed class GameSessionService : IDisposable
         }
     }
 
+    /// <summary>英雄目录/头像访问入口（选人探测与手动选择共用同一个客户端）。</summary>
+    internal LcuClient ChampionData => _lcuClient;
+
+    /// <summary>
+    /// 手动指定某局的英雄（选人/结算都没抓到时的保底）：写入记录并落盘，
+    /// 再确保头像在本地缓存。返回头像是否就绪。
+    /// </summary>
+    public async Task<bool> SetChampionManuallyAsync(GameSessionRecord record, int championId, string championName)
+    {
+        if (championId <= 0)
+        {
+            return false;
+        }
+
+        lock (_lock)
+        {
+            record.ChampionId = championId;
+            record.ChampionName = championName;
+            Save();
+        }
+
+        var iconReady = false;
+        try
+        {
+            iconReady = await _lcuClient.EnsureChampionIconAsync(championId).ConfigureAwait(false);
+        }
+        catch
+        {
+            // 头像拿不到不影响英雄名落库
+        }
+
+        RaiseSessionsChanged();
+        return iconReady;
+    }
+
     public void Start()
     {
         Load();
         _timer = new Timer(Tick, null, 3000, PollIntervalMs);
+        StartChampionReconcile(verbose: true);
         Debug.WriteLine("Game session tracking started");
+    }
+
+    /// <summary>
+    /// 补录：最近 3 天里英雄为空的记录，用对局历史按开局时间匹配补上。
+    /// 只在启动时跑一次（BOSS 要求不做定时重试，避免多余资源占用）；客户端不在线则静默跳过。
+    /// </summary>
+    private void StartChampionReconcile(bool verbose)
+    {
+        if (Interlocked.CompareExchange(ref _reconcileBusy, 1, 0) != 0)
+        {
+            return;
+        }
+
+        _lastReconcileUtc = DateTime.UtcNow;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                List<GameSessionRecord> missing;
+                lock (_lock)
+                {
+                    var cutoff = DateTimeOffset.Now.AddDays(-3);
+                    missing = _records
+                        .Where(record => record.ChampionId <= 0 && record.StartTime >= cutoff)
+                        .ToList();
+                }
+
+                if (missing.Count == 0)
+                {
+                    return;
+                }
+
+                var recent = await _lcuClient.GetMyRecentGameChampionsAsync(20).ConfigureAwait(false);
+                if (recent.Count == 0)
+                {
+                    if (verbose)
+                    {
+                        LcuClient.WriteDiag("补录：对局历史无数据，待补 " + missing.Count + " 条（不做定时重试，下次启动再补）");
+                    }
+
+                    return;
+                }
+
+                var catalog = await _lcuClient.GetChampionCatalogAsync().ConfigureAwait(false);
+                var fixedCount = 0;
+                foreach (var record in missing)
+                {
+                    var match = recent.FirstOrDefault(game =>
+                        Math.Abs((game.Created - record.StartTime).TotalMinutes) <= 20);
+                    if (match.ChampionId <= 0)
+                    {
+                        continue;
+                    }
+
+                    var name = await _lcuClient.TryGetChampionNameAsync(match.ChampionId).ConfigureAwait(false);
+                    if (string.IsNullOrWhiteSpace(name))
+                    {
+                        var entry = catalog.FirstOrDefault(c => c.Id == match.ChampionId);
+                        name = entry?.DisplayName ?? string.Empty;
+                    }
+
+                    await _lcuClient.EnsureChampionIconAsync(match.ChampionId).ConfigureAwait(false);
+                    lock (_lock)
+                    {
+                        record.ChampionId = match.ChampionId;
+                        record.ChampionName = name ?? string.Empty;
+                    }
+
+                    fixedCount++;
+                }
+
+                if (fixedCount > 0)
+                {
+                    lock (_lock)
+                    {
+                        Save();
+                    }
+
+                    RaiseSessionsChanged();
+                }
+
+                LcuClient.WriteDiag("补录完成：缺 " + missing.Count + " 条，补上 " + fixedCount + " 条");
+            }
+            catch (Exception ex)
+            {
+                LcuClient.WriteDiag("补录异常：" + ex.Message);
+            }
+            finally
+            {
+                Volatile.Write(ref _reconcileBusy, 0);
+            }
+        });
     }
 
     public void Stop()
@@ -368,6 +498,7 @@ public sealed class GameSessionService : IDisposable
                 _pendingChampionId = championId;
                 _pendingChampionName = name ?? string.Empty;
                 _pendingChampionAtUtc = DateTime.UtcNow;
+                LcuClient.WriteDiag("选人捕获：" + _pendingChampionName + "（" + championId + "）");
                 Debug.WriteLine($"Champ select captured: {_pendingChampionName} ({championId})");
             }
             catch (Exception ex)
@@ -407,6 +538,7 @@ public sealed class GameSessionService : IDisposable
                     var (championId, championName) = await _lcuClient.ResolveLastGameChampionAsync().ConfigureAwait(false);
                     if (championId <= 0)
                     {
+                        LcuClient.WriteDiag("结算补录 第" + attempt + "/" + ChampionResolveAttempts + "次：无数据");
                         continue;
                     }
 
@@ -420,10 +552,12 @@ public sealed class GameSessionService : IDisposable
                         Save();
                     }
                     RaiseSessionsChanged();
+                    LcuClient.WriteDiag("结算补录成功：" + record.ChampionName + "（" + championId + "）第" + attempt + "次尝试");
                     Debug.WriteLine($"Session champion resolved: {record.ChampionName} ({championId})");
                     return;
                 }
 
+                LcuClient.WriteDiag("结算补录失败：6 次尝试均无数据，保留选人值「" + record.ChampionName + "」");
                 Debug.WriteLine("Session champion unresolved, kept champ-select value");
             }
             catch (Exception ex)

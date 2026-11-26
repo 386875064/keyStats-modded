@@ -27,6 +27,20 @@ public partial class ReportWindow : Window
         public double BarHeight { get; set; }
     }
 
+    /// <summary>带提示的柱状图行（强度趋势 / 连打疲劳共用）。</summary>
+    private sealed class ChartBarRow
+    {
+        public string Label { get; set; } = string.Empty;
+        public double BarHeight { get; set; }
+        public string Tooltip { get; set; } = string.Empty;
+    }
+
+    private sealed class ChampionRow
+    {
+        public string NameText { get; set; } = string.Empty;
+        public string StatText { get; set; } = string.Empty;
+    }
+
     private string _range = "week";
 
     public ReportWindow()
@@ -150,6 +164,159 @@ public partial class ReportWindow : Window
 
         // 今日 24 小时分布
         RefreshHourly();
+
+        // 对局分析三件套（英雄战绩 / 强度趋势 / 连打疲劳）
+        RefreshGameAnalysis();
+    }
+
+    /// <summary>对局分析：英雄战绩卡 + 近 14 天强度趋势 + 连打疲劳（全部来自 game_sessions，与周期切换无关）。</summary>
+    private void RefreshGameAnalysis()
+    {
+        var sessions = GameSessionService.Instance.GetSessions()
+            .Where(session => session.DurationSeconds >= 60 && session.KeyPresses >= 100)
+            .ToList();
+
+        RefreshChampionStats(sessions);
+        RefreshStrengthTrend(sessions);
+        RefreshFatigue(sessions);
+    }
+
+    private void RefreshChampionStats(List<Models.GameSessionRecord> sessions)
+    {
+        var cutoff = DateTimeOffset.Now.AddDays(-30);
+        var recent = sessions.Where(session => session.StartTime >= cutoff).ToList();
+
+        if (recent.Count == 0)
+        {
+            ChampionList.ItemsSource = null;
+            ChampionEmptyText.Visibility = Visibility.Visible;
+            ChampionHintText.Text = "—";
+            return;
+        }
+
+        var rows = recent
+            .GroupBy(session => session.ChampionText)
+            .Select(group => new
+            {
+                Name = group.Key,
+                Count = group.Count(),
+                AvgApm = group.Average(session => session.ApM),
+                AvgKeys = group.Average(session => session.KeyPresses),
+            })
+            .OrderByDescending(item => item.Count)
+            .ThenByDescending(item => item.AvgApm)
+            .Take(8)
+            .Select(item => new ChampionRow
+            {
+                NameText = item.Name,
+                StatText = $"{item.Count} 局 · 均 APM {item.AvgApm:F0} · 均键 {item.AvgKeys:N0}",
+            })
+            .ToList();
+
+        ChampionList.ItemsSource = rows;
+        ChampionEmptyText.Visibility = Visibility.Collapsed;
+
+        var totalMinutes = recent.Sum(session => session.DurationSeconds) / 60.0;
+        var totalKeys = recent.Sum(session => session.KeyPresses);
+        ChampionHintText.Text = $"近 30 天 {recent.Count} 局 · {totalMinutes:F0} 分钟 · {totalKeys:N0} 键";
+    }
+
+    private void RefreshStrengthTrend(List<Models.GameSessionRecord> sessions)
+    {
+        const int days = 14;
+        var endDay = DateTime.Today;
+        var startDay = endDay.AddDays(-(days - 1));
+
+        var byDay = sessions
+            .Where(session => session.StartTime.LocalDateTime.Date >= startDay)
+            .GroupBy(session => session.StartTime.LocalDateTime.Date)
+            .ToDictionary(
+                group => group.Key,
+                group => (Count: group.Count(), Apm: group.Average(session => session.ApM)));
+
+        var maxApm = byDay.Count > 0 ? byDay.Values.Max(value => value.Apm) : 1;
+
+        var rows = new List<ChartBarRow>();
+        for (var day = startDay; day <= endDay; day = day.AddDays(1))
+        {
+            byDay.TryGetValue(day, out var value);
+            rows.Add(new ChartBarRow
+            {
+                Label = day.Day % 2 == 0 ? day.ToString("dd") : string.Empty,
+                BarHeight = value.Count > 0 ? Math.Max(4, 64.0 * value.Apm / Math.Max(1, maxApm)) : 2,
+                Tooltip = value.Count > 0
+                    ? $"{day:MM-dd} · {value.Count} 局 · 均 APM {value.Apm:F0}"
+                    : $"{day:MM-dd} · 无对局",
+            });
+        }
+
+        TrendList.ItemsSource = rows;
+        TrendHintText.Text = byDay.Count > 0
+            ? $"14 天共 {byDay.Values.Sum(value => value.Count)} 局 · 柱高 = 当日均 APM"
+            : "最近 14 天没有对局";
+    }
+
+    private void RefreshFatigue(List<Models.GameSessionRecord> sessions)
+    {
+        // 每晚按开局时间排序，第 1 局、第 2 局……（6 局以上归为 6+）
+        var buckets = new Dictionary<int, List<double>>();
+        foreach (var night in sessions.GroupBy(session => session.StartTime.LocalDateTime.Date))
+        {
+            var ordered = night.OrderBy(session => session.StartTime).ToList();
+            for (var index = 0; index < ordered.Count; index++)
+            {
+                var bucket = Math.Min(index + 1, 6);
+                if (!buckets.TryGetValue(bucket, out var values))
+                {
+                    values = new List<double>();
+                    buckets[bucket] = values;
+                }
+
+                values.Add(ordered[index].ApM);
+            }
+        }
+
+        if (buckets.Count == 0)
+        {
+            FatigueList.ItemsSource = null;
+            FatigueHintText.Text = "还没有对局数据";
+            return;
+        }
+
+        var average = buckets.ToDictionary(pair => pair.Key, pair => pair.Value.Average());
+        var max = Math.Max(1, average.Values.Max());
+
+        var labels = new Dictionary<int, string>
+        {
+            [1] = "1", [2] = "2", [3] = "3", [4] = "4", [5] = "5", [6] = "6+",
+        };
+
+        var rows = new List<ChartBarRow>();
+        for (var bucket = 1; bucket <= 6; bucket++)
+        {
+            average.TryGetValue(bucket, out var apm);
+            buckets.TryGetValue(bucket, out var samples);
+            rows.Add(new ChartBarRow
+            {
+                Label = labels[bucket],
+                BarHeight = samples == null ? 2 : Math.Max(6, 58.0 * apm / max),
+                Tooltip = samples == null
+                    ? $"第 {labels[bucket]} 局：无样本"
+                    : $"第 {labels[bucket]} 局：{samples.Count} 局样本 · 均 APM {apm:F0}",
+            });
+        }
+
+        FatigueList.ItemsSource = rows;
+
+        if (average.TryGetValue(1, out var first) && average.TryGetValue(2, out var second) && first > 0 && second > 0)
+        {
+            var delta = (second - first) * 100.0 / first;
+            FatigueHintText.Text = $"第 1 局均 APM {first:F0} → 第 2 局 {second:F0}（{(delta >= 0 ? "+" : string.Empty)}{delta:F0}%）· 样本越打越多越准";
+        }
+        else
+        {
+            FatigueHintText.Text = "样本还少，多打几个晚上会更准";
+        }
     }
 
     private void RefreshHourly()

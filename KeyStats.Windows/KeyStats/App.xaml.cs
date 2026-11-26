@@ -131,6 +131,36 @@ public partial class App : System.Windows.Application
     private long _lastResumeRecoveryTicks;
     private bool _isFloatingStatsHiddenForFullscreen;
 
+    private static readonly object CrashLogLock = new();
+
+    /// <summary>全局异常落盘：%LOCALAPPDATA%\KeyStats\crash.log（超过 256KB 重建）。</summary>
+    private static void CrashLog(string channel, Exception? exception)
+    {
+        try
+        {
+            var dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "KeyStats");
+            var path = Path.Combine(dir, "crash.log");
+            var message = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") + " [" + channel + "] " +
+                          (exception?.ToString() ?? "null") + Environment.NewLine;
+            lock (CrashLogLock)
+            {
+                Directory.CreateDirectory(dir);
+                var existing = File.Exists(path) ? new FileInfo(path).Length : 0;
+                if (existing > 256 * 1024)
+                {
+                    File.WriteAllText(path, string.Empty);
+                }
+                File.AppendAllText(path, message);
+            }
+        }
+        catch
+        {
+            // 崩溃日志写不进去就放弃，绝不能再抛
+        }
+    }
+
     protected override void OnStartup(StartupEventArgs e)
     {
 #if DEBUG
@@ -143,13 +173,20 @@ public partial class App : System.Windows.Application
 
 
         // Global exception handlers
+        // 注意：窗口程序里 Console.WriteLine 看不见，必须落盘，否则 UI 线程异常被静默吞掉
+        // （2026-10-28 对局记录窗口全靠这条日志定位：Run.Text TwoWay 绑只读属性）
         AppDomain.CurrentDomain.UnhandledException += (s, args) =>
         {
-            Console.WriteLine($"=== UNHANDLED EXCEPTION ===\n{args.ExceptionObject}");
+            CrashLog("APPDOMAIN", args.ExceptionObject as Exception);
+        };
+        TaskScheduler.UnobservedTaskException += (s, args) =>
+        {
+            CrashLog("TASK", args.Exception);
+            args.SetObserved();
         };
         DispatcherUnhandledException += (s, args) =>
         {
-            Console.WriteLine($"=== DISPATCHER EXCEPTION ===\n{args.Exception}");
+            CrashLog("DISPATCHER", args.Exception);
             args.Handled = true;
         };
 
@@ -799,17 +836,28 @@ public partial class App : System.Windows.Application
             _trayIconViewModel.PropertyChanged -= OnTrayIconViewModelPropertyChanged;
         }
         TrackAnalyticsExit();
+        // 顺序要紧：先清 App 自己持有的托盘图标，再让 ViewModel 收尾。
+        // 反过来会先 Dispose 同一个 NotifyIcon，随后 Visible=false 访问已释放的 Icon.Handle，
+        // 抛 ObjectDisposedException（crash.log 里 35 条全是它）。
+        if (_trayIcon != null)
+        {
+            try
+            {
+                _trayIcon.MouseClick -= OnTrayIconMouseClick;
+                _trayIcon.Visible = false;
+            }
+            catch
+            {
+                // 图标已被释放则跳过，退出路径不抛异常
+            }
+
+            _trayIcon.Dispose();
+            _trayIcon = null;
+        }
         _trayIconViewModel?.Cleanup();
         _trayContextMenuHost?.Dispose();
         _taskbarCreatedWatcher?.Dispose();
         _taskbarCreatedWatcher = null;
-        if (_trayIcon != null)
-        {
-            _trayIcon.MouseClick -= OnTrayIconMouseClick;
-            _trayIcon.Visible = false;
-            _trayIcon.Dispose();
-            _trayIcon = null;
-        }
         _floatingStatsWindow?.Close();
         _floatingStatsWindow = null;
         InputMonitorService.Instance.StopMonitoring();

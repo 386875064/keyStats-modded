@@ -13,7 +13,8 @@
 
 ## 二、本修改版相对上游的改动
 
-只改动了 Windows（.NET Framework 4.8 + WPF）部分，macOS（Swift）代码未做任何修改。
+本仓库**仅包含 Windows（.NET Framework 4.8 + WPF）实现**；上游的 macOS（Swift）源码已从本仓库移除，
+既未修改也未包含在本仓库中。
 
 1. **游戏对局统计**：自动识别《英雄联盟》对局，逐局记录键鼠操作指标
 2. **双采集通道**：新增 Raw Input（`RIDEV_INPUTSINK`）通道 + 原低级钩子兜底，

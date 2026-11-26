@@ -99,18 +99,20 @@
 
                                 <StackPanel Grid.Column="2" VerticalAlignment="Center">
                                     <TextBlock FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}">
-                                        <Run Text="{Binding KeyPresses, StringFormat={}{0:N0}}"/>
+                                        <!-- Run.Text 绑定默认是 TwoWay，绑只读属性会在行生成时抛
+                                             XamlParseException（整个窗口空白），必须显式 Mode=OneWay -->
+                                        <Run Text="{Binding KeyPresses, Mode=OneWay, StringFormat={}{0:N0}}"/>
                                         <Run Text=" 键 · "/>
-                                        <Run Text="{Binding TotalClicks, StringFormat={}{0:N0}}"/>
+                                        <Run Text="{Binding TotalClicks, Mode=OneWay, StringFormat={}{0:N0}}"/>
                                         <Run Text=" 击"/>
                                     </TextBlock>
                                     <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}">
                                         <Run Text="APM "/>
-                                        <Run Text="{Binding ApM, StringFormat={}{0:F0}}"/>
+                                        <Run Text="{Binding ApM, Mode=OneWay, StringFormat={}{0:F0}}"/>
                                         <Run Text=" · 峰值 "/>
-                                        <Run Text="{Binding PeakApm}"/>
+                                        <Run Text="{Binding PeakApm, Mode=OneWay}"/>
                                         <Run Text=" · 通道 "/>
-                                        <Run Text="{Binding ChannelText}"/>
+                                        <Run Text="{Binding ChannelText, Mode=OneWay}"/>
                                     </TextBlock>
                                 </StackPanel>
 

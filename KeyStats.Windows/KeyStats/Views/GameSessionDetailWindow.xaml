@@ -34,6 +34,9 @@
                            Foreground="{DynamicResource TextSecondaryBrush}"/>
                 <TextBlock x:Name="DurationText" FontSize="12" Margin="0,2,0,0"
                            Foreground="{DynamicResource TextSecondaryBrush}"/>
+                <Button x:Name="ChangeChampionButton" Content="选择英雄" FontSize="11"
+                        Padding="10,2" Margin="0,6,0,0" HorizontalAlignment="Left"
+                        Cursor="Hand" Click="ChangeChampionButton_Click"/>
             </StackPanel>
         </StackPanel>
 
@@ -56,9 +59,12 @@
                                Foreground="{DynamicResource TextPrimaryBrush}"/>
                 </StackPanel>
                 <StackPanel Grid.Row="0" Grid.Column="1">
-                    <TextBlock Text="点击（左/右/中/侧）" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                    <TextBlock Text="点击" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
                     <TextBlock x:Name="ClicksText" Text="0" FontSize="17" FontWeight="SemiBold"
                                Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <TextBlock x:Name="ClicksBreakdownText" FontSize="10" Margin="0,1,0,0"
+                               TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource TextSecondaryBrush}"/>
                 </StackPanel>
                 <StackPanel Grid.Row="0" Grid.Column="2">
                     <TextBlock Text="APM" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>

@@ -36,6 +36,7 @@ public partial class GameSessionDetailWindow : Window
     private void Fill()
     {
         ChampionNameText.Text = _record.ChampionText;
+        ChangeChampionButton.Content = _record.ChampionId > 0 ? "更改英雄" : "选择英雄";
         DateText.Text = _record.StartTime.LocalDateTime.ToString("yyyy-MM-dd HH:mm");
         DurationText.Text = $"时长 {_record.DurationText}";
 
@@ -45,8 +46,10 @@ public partial class GameSessionDetailWindow : Window
         }
 
         KeyPressesText.Text = _record.KeyPresses.ToString("N0");
-        ClicksText.Text =
-            $"{_record.TotalClicks:N0}（{_record.LeftClicks:N0}/{_record.RightClicks:N0}/{_record.MiddleClicks:N0}/{_record.SideBackClicks + _record.SideForwardClicks:N0}）";
+        // 总数独占一行，分项放小字，避免挤爆三等分列宽和 APM 重叠
+        ClicksText.Text = _record.TotalClicks.ToString("N0");
+        ClicksBreakdownText.Text =
+            $"左 {_record.LeftClicks:N0} · 右 {_record.RightClicks:N0} · 中 {_record.MiddleClicks:N0} · 侧 {_record.SideBackClicks + _record.SideForwardClicks:N0}";
         ApmText.Text = _record.ApM.ToString("F0");
         PeakApmText.Text = _record.PeakApm.ToString("N0");
         ChannelText.Text = _record.ChannelText;
@@ -85,6 +88,30 @@ public partial class GameSessionDetailWindow : Window
 
         KeyListHeader.Text = $"本局逐键分布（共 {counts.Count} 键）";
         KeyList.ItemsSource = rows;
+    }
+
+    private async void ChangeChampionButton_Click(object sender, RoutedEventArgs e)
+    {
+        var picker = new ChampionPickerWindow { Owner = this };
+        picker.ShowDialog();
+        var picked = picker.SelectedChampion;
+        if (picked == null)
+        {
+            return;
+        }
+
+        ChangeChampionButton.IsEnabled = false;
+        try
+        {
+            await GameSessionService.Instance.SetChampionManuallyAsync(
+                _record, picked.Id, picked.DisplayName);
+        }
+        finally
+        {
+            ChangeChampionButton.IsEnabled = true;
+        }
+
+        Fill();
     }
 
     private static System.Windows.Media.ImageSource? LoadImage(string path)

@@ -1,103 +1,53 @@
-# KeyStats 快速开始指南
+# KeyStats for Windows · 快速开始
 
-## 在 Mac 上编译运行
+## 方式一：直接用现成程序
 
-### 步骤 1：下载项目
+1. 解压便携包，双击 `KeyStats.exe`
+2. 首次运行若弹出 UAC，选「是」（程序需要读取全局键鼠输入，并以管理员权限常驻才能覆盖提权运行的游戏）
+3. 启动后没有主窗口，**图标在任务栏右下角托盘区**；点它打开统计面板
 
-将 `KeyStats.zip` 下载到您的 Mac，然后解压缩。
+## 方式二：从源码构建
 
-### 步骤 2：打开 Xcode 项目
+### 环境
+
+| 项 | 要求 |
+|---|---|
+| 系统 | Windows 10 (1903+) / Windows 11 |
+| SDK | .NET SDK 6 及以上（用于构建）+ .NET Framework 4.8 目标包 |
+| 运行时 | .NET Framework 4.8（Win10 1903+ 自带） |
+
+### 构建
 
 ```bash
-cd KeyStats
-open KeyStats.xcodeproj
+dotnet build KeyStats.Windows/KeyStats/KeyStats.csproj -c Release -o dist/KeyStats-Portable
 ```
 
-或者双击 `KeyStats.xcodeproj` 文件。
+产物：`dist/KeyStats-Portable/KeyStats.exe`，双击运行。
 
-### 步骤 3：配置签名（可选）
+> 若 NuGet 还原失败（离线环境），加 `--no-restore` 复用已有 `obj/`。
 
-1. 在 Xcode 中选择左侧项目导航器中的 "KeyStats" 项目
-2. 选择 "Signing & Capabilities" 标签
-3. 在 "Team" 下拉菜单中选择您的开发者账号
-   - 如果没有开发者账号，可以选择 "Add an Account..." 使用 Apple ID 登录
+## 数据在哪
 
-> **提示**：如果只是本地测试，可以跳过签名配置，直接运行。
+| 内容 | 路径 |
+|---|---|
+| 统计与设置 | `%LOCALAPPDATA%\KeyStats\` |
+| 崩溃日志 | `%LOCALAPPDATA%\KeyStats\crash.log` |
+| LCU / 英雄识别日志 | `%LOCALAPPDATA%\KeyStats\lcu.log` |
+| 英雄头像缓存 | `%LOCALAPPDATA%\KeyStats\champion-icons\` |
 
-### 步骤 4：编译运行
+卸载：删程序文件夹即可；要连数据一起清，再删 `%LOCALAPPDATA%\KeyStats\`。
 
-1. 确保顶部工具栏的目标设备选择为 "My Mac"
-2. 点击运行按钮 ▶️ 或按 `⌘R`
+## 开机自启
 
-### 步骤 5：授予权限
-
-首次运行时会弹出权限请求：
-
-1. 点击 "打开系统设置"
-2. 在 "隐私与安全性" > "辅助功能" 中
-3. 找到 "KeyStats" 并开启开关
-4. 可能需要输入系统密码确认
-
-授权后，应用会自动开始统计！
-
-## 使用应用
-
-### 查看菜单栏
-
-运行后，您会在菜单栏右侧看到类似这样的显示：
-
-```
-⌨️0 🖱️0
-```
-
-随着您使用键盘和鼠标，数字会实时更新。
-
-### 查看详细统计
-
-点击菜单栏上的统计数字，会弹出详细面板，显示：
-
-- 键盘敲击次数
-- 左键点击次数
-- 右键点击次数
-- 鼠标移动距离
-- 滚动距离
-
-### 重置或退出
-
-在详细面板底部：
-- 点击 "重置统计" 清零今日数据
-- 点击 "退出应用" 关闭 KeyStats
+程序在设置页提供自启开关。若程序以管理员权限常驻，写注册表 `Run` 键的自启方式在登录时会被系统静默跳过 —— 这种情况请改用**任务计划程序**（触发器 = 登录时，勾选「使用最高权限运行」）。
 
 ## 常见问题
 
-### Q: 为什么统计数据一直是 0？
+**Q：托盘没有图标？**
+按 `Ctrl+Shift+Esc` 看进程里有没有 `KeyStats.exe`；没有就重新双击。启动失败看 `%LOCALAPPDATA%\KeyStats\crash.log`。
 
-A: 请检查是否已授予辅助功能权限。前往 "系统设置" > "隐私与安全性" > "辅助功能"，确保 KeyStats 已启用。
+**Q：计数不涨？**
+多半是权限不匹配：普通权限的钩子抓不到以管理员权限运行的前台程序（如游戏客户端）。给 `KeyStats.exe` 加上「以管理员身份运行」的兼容性设置后重启。
 
-### Q: 如何让应用开机自启动？
-
-A: 前往 "系统设置" > "通用" > "登录项"，点击 "+" 添加 KeyStats.app。
-
-### Q: 数据存储在哪里？
-
-A: 数据存储在 `~/Library/Preferences/com.keystats.app.plist` 中。
-
-### Q: 如何完全卸载？
-
-A: 
-1. 退出 KeyStats
-2. 将 KeyStats.app 移到废纸篓
-3. 删除 `~/Library/Preferences/com.keystats.app.plist`
-
-## 构建发布版本
-
-如果想创建可分发的应用：
-
-1. 在 Xcode 中选择 Product > Archive
-2. 在 Organizer 窗口中选择刚创建的归档
-3. 点击 "Distribute App"
-4. 选择 "Copy App" 导出未签名版本，或选择其他分发方式
-
-## 技术支持
-
-如有问题，请查看 README.md 或提交 Issue。
+**Q：英雄名显示「未知」？**
+英雄识别依赖《英雄联盟》客户端（LCU 接口）。客户端没开、或对局结束时客户端已退出，就会抓不到 —— 可在对局详情窗手动点「选择英雄」补上。
